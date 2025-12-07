@@ -8,11 +8,24 @@ import type {
   WSServerMessage,
   CanvasCommand,
   WSClientMessage,
+  ScreenshotBounds,
 } from '@/types';
 import { audioService } from '@/lib/audioService';
 import { wsManager } from '@/lib/wsManager';
-import { textToStrokesAsync, strokesToSegments } from '@/lib/handwriting';
-import { animateDrawShape } from '@/lib/strokeAnimation';
+
+// Attention cursor state for visual focus
+interface AttentionState {
+  x: number | null;
+  y: number | null;
+  label?: string;
+  visible: boolean;
+}
+
+// Celebration state
+interface CelebrationState {
+  active: boolean;
+  intensity: 'small' | 'big';
+}
 
 interface TutorStoreState {
   // Voice State
@@ -27,12 +40,23 @@ interface TutorStoreState {
 
   // Connection
   connectionStatus: ConnectionStatus;
+  sessionReady: boolean; // True when backend Grok session is ready for audio
 
   // Canvas Reference (for external access)
   editorRef: Editor | null;
 
   // Live canvas screenshot (updated on canvas changes)
   latestCanvasScreenshot: string | null;
+  latestScreenshotBounds: ScreenshotBounds | null;
+
+  // Flag to track when AI is drawing (to avoid triggering user change detection)
+  isAIDrawing: boolean;
+
+  // Attention cursor for visual focus
+  attention: AttentionState;
+
+  // Celebration effect
+  celebration: CelebrationState;
 }
 
 interface TutorStoreActions {
@@ -45,7 +69,9 @@ interface TutorStoreActions {
 
   // Message Actions
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void;
+  updateOptimisticMessage: (content: string) => void;
   clearMessages: () => void;
+  clearCheckContext: () => void;
 
   // Connection Actions
   setConnectionStatus: (status: ConnectionStatus) => void;
@@ -56,7 +82,15 @@ interface TutorStoreActions {
   // Canvas Actions
   setEditorRef: (editor: Editor | null) => void;
   clearCanvas: () => void;
-  setLatestCanvasScreenshot: (screenshot: string | null) => void;
+  setLatestCanvasScreenshot: (screenshot: string | null, bounds?: ScreenshotBounds) => void;
+
+  // Attention Actions
+  setAttention: (x: number, y: number, label?: string) => void;
+  clearAttention: () => void;
+
+  // Celebration Actions
+  triggerCelebration: (intensity?: 'small' | 'big') => void;
+  clearCelebration: () => void;
 
   // Handle Server Messages
   handleServerMessage: (message: WSServerMessage) => void;
@@ -73,15 +107,34 @@ const initialState: TutorStoreState = {
   tutorState: { type: 'idle' },
   messages: [],
   connectionStatus: 'disconnected',
+  sessionReady: false,
   editorRef: null,
   latestCanvasScreenshot: null,
+  latestScreenshotBounds: null,
+  isAIDrawing: false,
+  attention: {
+    x: null,
+    y: null,
+    label: undefined,
+    visible: false,
+  },
+  celebration: {
+    active: false,
+    intensity: 'big',
+  },
 };
 
 export const useTutorStore = create<TutorStore>()((set, get) => {
   // Set up WebSocket handlers once
   wsManager.setHandlers(
     (message) => get().handleServerMessage(message),
-    (status) => set({ connectionStatus: status })
+    (status) => {
+      set({ connectionStatus: status });
+      // Reset sessionReady when disconnected
+      if (status !== 'connected') {
+        set({ sessionReady: false });
+      }
+    }
   );
 
   return {
@@ -104,7 +157,34 @@ export const useTutorStore = create<TutorStore>()((set, get) => {
         ],
       })),
 
+    updateOptimisticMessage: (content) =>
+      set((state) => {
+        // Find the last optimistic student message
+        const optimisticIndex = state.messages.findLastIndex(
+          (m) => m.role === 'student' && m.isOptimistic
+        );
+
+        if (optimisticIndex >= 0) {
+          const newMessages = [...state.messages];
+          newMessages[optimisticIndex] = {
+            ...newMessages[optimisticIndex],
+            content,
+          };
+          return { messages: newMessages };
+        }
+
+        return state;
+      }),
+
     clearMessages: () => set({ messages: [] }),
+
+    clearCheckContext: () =>
+      set((state) => {
+        // Keep only student messages and the most recent tutor message (if it's not check-related)
+        // This clears old "checking your work" feedback when a new check is started
+        const studentMessages = state.messages.filter((m) => m.role === 'student');
+        return { messages: studentMessages };
+      }),
     setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
 
     connect: () => wsManager.connect(),
@@ -123,14 +203,44 @@ export const useTutorStore = create<TutorStore>()((set, get) => {
       set({ latestCanvasScreenshot: null });
     },
 
-    setLatestCanvasScreenshot: (latestCanvasScreenshot) => set({ latestCanvasScreenshot }),
+    setLatestCanvasScreenshot: (latestCanvasScreenshot, latestScreenshotBounds) => set({ latestCanvasScreenshot, latestScreenshotBounds: latestScreenshotBounds ?? null }),
+
+    setAttention: (x, y, label) =>
+      set({
+        attention: { x, y, label, visible: true },
+      }),
+
+    clearAttention: () =>
+      set({
+        attention: { x: null, y: null, label: undefined, visible: false },
+      }),
+
+    triggerCelebration: (intensity = 'big') =>
+      set({
+        celebration: { active: true, intensity },
+      }),
+
+    clearCelebration: () =>
+      set({
+        celebration: { active: false, intensity: 'big' },
+      }),
 
     handleServerMessage: (message) => {
       const { addMessage, setVoiceState, setTutorState, editorRef } = get();
 
       switch (message.type) {
         case 'VOICE_STATE':
-          setVoiceState(message.state);
+          // In click-to-talk mode, frontend controls listening/processing states
+          // Backend sends speaking/idle states when Grok responds
+          if (message.state === 'speaking') {
+            setVoiceState('speaking');
+            setTutorState({ type: 'speaking' });
+          } else if (message.state === 'idle') {
+            // Grok finished speaking, ready for next input
+            setVoiceState('idle');
+            setTutorState({ type: 'idle' });
+          }
+          // Ignore listening/processing from backend - frontend controls these
           break;
 
         case 'VOICE_TRANSCRIPT':
@@ -169,6 +279,8 @@ export const useTutorStore = create<TutorStore>()((set, get) => {
           } else {
             // Tutor messages are added normally
             addMessage({ role: message.role, content: message.text });
+            // Note: Celebrations are triggered via explicit CELEBRATE messages from the backend
+            // when Grok uses the celebrate() tool, not via keyword matching
           }
           break;
 
@@ -177,14 +289,38 @@ export const useTutorStore = create<TutorStore>()((set, get) => {
           break;
 
         case 'CANVAS_COMMAND':
-          if (editorRef) {
-            handleCanvasCommand(editorRef, message.command);
-          }
+          handleCanvasCommand(
+            editorRef,
+            message.command,
+            {
+              setAttention: get().setAttention,
+              clearAttention: get().clearAttention,
+            },
+            (isDrawing: boolean) => set({ isAIDrawing: isDrawing })
+          );
           break;
 
         case 'VOICE_AUDIO':
           // Play audio through the audio service
           audioService.playAudio(message.audio);
+          break;
+
+        case 'CELEBRATE':
+          // Explicit celebration command from backend
+          get().triggerCelebration(message.intensity || 'big');
+          break;
+
+        case 'SESSION_READY':
+          // Backend Grok session is ready for audio streaming
+          console.log('[WebSocket] Session ready, can start audio streaming');
+          set({ sessionReady: true });
+          break;
+
+        case 'CLEAR_CHECK_CONTEXT':
+          // Clear old tutor messages when a new check is started
+          // This prevents stale "wrong answer" feedback from showing when user corrects their work
+          console.log('[WebSocket] Clearing check context - removing old tutor messages');
+          get().clearCheckContext();
           break;
 
         case 'ERROR':
@@ -197,56 +333,71 @@ export const useTutorStore = create<TutorStore>()((set, get) => {
   };
 });
 
-async function handleCanvasCommand(editor: Editor, command: CanvasCommand): Promise<void> {
+interface AttentionHandlers {
+  setAttention: (x: number, y: number, label?: string) => void;
+  clearAttention: () => void;
+}
+
+async function handleCanvasCommand(
+  editor: Editor | null,
+  command: CanvasCommand,
+  attentionHandlers: AttentionHandlers,
+  setAIDrawing: (isDrawing: boolean) => void
+): Promise<void> {
   try {
+    // Handle attention commands (don't need editor)
+    if (command.action === 'ATTENTION_TO') {
+      attentionHandlers.setAttention(command.x, command.y, command.label);
+      console.log('[Canvas] Attention moved to:', command.x, command.y, command.label);
+      return;
+    }
+
+    if (command.action === 'CLEAR_ATTENTION') {
+      attentionHandlers.clearAttention();
+      console.log('[Canvas] Attention cleared');
+      return;
+    }
+
+    // All other commands require the editor
+    if (!editor) {
+      console.warn('[Canvas] No editor available for command:', command.action);
+      return;
+    }
+
+    // Mark that AI is drawing (so TutorCanvas doesn't trigger user change detection)
+    setAIDrawing(true);
+
     switch (command.action) {
       case 'ADD_ANIMATED_TEXT': {
         const { text, x, y, color = 'white', size = 'm' } = command;
-
-        // Convert text to strokes using handwriting font
-        const result = await textToStrokesAsync(text, 2.5);
-        if (result.strokes.length === 0) {
-          // Fallback to instant text if conversion fails
-          console.warn('[Canvas] Handwriting conversion failed, falling back to instant text');
-          const shapeId = createShapeId();
-          editor.createShape({
-            id: shapeId,
-            type: 'text',
-            x,
-            y,
-            props: {
-              richText: toRichText(text),
-              color,
-              size,
-              font: 'draw',
-              autoSize: true,
-            },
-          });
-          return;
-        }
-
-        // Convert to tldraw segment format
-        const segments = strokesToSegments(result.strokes);
-
-        // Create draw shape with empty segments
         const shapeId = createShapeId();
+
+        // Create text shape with empty content
         editor.createShape({
           id: shapeId,
-          type: 'draw',
+          type: 'text',
           x,
           y,
           props: {
-            segments: [],
+            richText: toRichText(''),
             color,
             size,
-            isComplete: false,
+            font: 'draw',
+            autoSize: true,
           },
         });
 
-        // Animate the shape
-        console.log('[Canvas] Starting handwriting animation for:', text);
-        await animateDrawShape(editor, shapeId, segments, { color, size });
-        console.log('[Canvas] Handwriting animation complete');
+        // Animate character by character
+        console.log('[Canvas] Starting text animation for:', text);
+        for (let i = 1; i <= text.length; i++) {
+          editor.updateShape({
+            id: shapeId,
+            type: 'text',
+            props: { richText: toRichText(text.slice(0, i)) },
+          });
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        console.log('[Canvas] Text animation complete');
         break;
       }
 
@@ -294,8 +445,19 @@ async function handleCanvasCommand(editor: Editor, command: CanvasCommand): Prom
       case 'PAN_TO':
         editor.centerOnPoint({ x: command.x, y: command.y });
         break;
+
+      case 'CLEAR_CANVAS': {
+        const shapeIds = editor.getCurrentPageShapeIds();
+        editor.deleteShapes([...shapeIds]);
+        console.log('[Canvas] Canvas cleared');
+        break;
+      }
     }
   } catch (error) {
     console.error('[Canvas] Error handling command:', error, command);
+  } finally {
+    // Always reset the AI drawing flag after a short delay
+    // (delay allows tldraw's store listener to fire first)
+    setTimeout(() => setAIDrawing(false), 100);
   }
 }

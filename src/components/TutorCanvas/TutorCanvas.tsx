@@ -5,7 +5,8 @@ import { Tldraw, Editor, createShapeId, DefaultColorStyle, TLComponents } from '
 import 'tldraw/tldraw.css';
 import { useTutorStore } from '@/stores/tutorStore';
 import { debounce } from '@/lib/debounce';
-import { captureCanvasScreenshot } from '@/lib/canvasUtils';
+import { captureCanvasScreenshotWithBounds } from '@/lib/canvasUtils';
+import { AttentionCursor } from '@/components/AttentionCursor/AttentionCursor';
 import type { TldrawShapeData } from '@/types';
 
 // Hide unnecessary tldraw UI components for cleaner interface
@@ -26,24 +27,37 @@ export function TutorCanvas() {
   const setLatestCanvasScreenshot = useTutorStore((state) => state.setLatestCanvasScreenshot);
   const voiceState = useTutorStore((state) => state.voiceState);
   const connectionStatus = useTutorStore((state) => state.connectionStatus);
+  const attention = useTutorStore((state) => state.attention);
+  const isAIDrawing = useTutorStore((state) => state.isAIDrawing);
   const editorRef = useRef<Editor | null>(null);
 
   // Debounced screenshot capture for AI vision
   const captureScreenshotDebounced = useMemo(
     () =>
       debounce(async (editor: Editor) => {
-        const screenshot = await captureCanvasScreenshot(editor);
-        setLatestCanvasScreenshot(screenshot);
-        console.log('[Canvas] Screenshot captured:', screenshot ? 'yes' : 'empty canvas');
+        const result = await captureCanvasScreenshotWithBounds(editor);
+        setLatestCanvasScreenshot(result?.dataUrl ?? null, result?.bounds ? { ...result.bounds, padding: result.padding } : undefined);
+        console.log('[Canvas] Screenshot captured:', result ? 'yes' : 'empty canvas', result?.bounds ? `bounds: (${result.bounds.x.toFixed(0)}, ${result.bounds.y.toFixed(0)})` : '');
       }, 500),
     [setLatestCanvasScreenshot]
   );
 
   // Debounced canvas update sender (for WebSocket backend)
+  // Note: We use refs to get current state values to avoid stale closure issues
+  const connectionStatusRef = useRef(connectionStatus);
+  connectionStatusRef.current = connectionStatus;
+
+  const isAIDrawingRef = useRef(isAIDrawing);
+  isAIDrawingRef.current = isAIDrawing;
+
   const sendCanvasUpdate = useMemo(
     () =>
       debounce(async (editor: Editor) => {
-        if (connectionStatus !== 'connected') return;
+        // Use ref to get current connection status (avoids stale closure)
+        if (connectionStatusRef.current !== 'connected') {
+          console.log('[Canvas] Skipping update - not connected:', connectionStatusRef.current);
+          return;
+        }
 
         const shapes = editor.getCurrentPageShapes();
         const shapesJson: TldrawShapeData[] = shapes.map((shape) => ({
@@ -54,17 +68,19 @@ export function TutorCanvas() {
           props: shape.props as Record<string, unknown>,
         }));
 
-        // Capture fresh screenshot for this update
-        const screenshot = await captureCanvasScreenshot(editor);
+        // Capture fresh screenshot with bounds for this update
+        const result = await captureCanvasScreenshotWithBounds(editor);
 
+        console.log('[Canvas] Sending CANVAS_UPDATE with', shapes.length, 'shapes, screenshot:', !!result);
         send({
           type: 'CANVAS_UPDATE',
           shapes: shapesJson,
           summary: `Canvas has ${shapes.length} shapes`,
-          screenshot: screenshot ?? undefined,
+          screenshot: result?.dataUrl ?? undefined,
+          screenshotBounds: result?.bounds ? { ...result.bounds, padding: result.padding } : undefined,
         });
-      }, 300),
-    [send, connectionStatus]
+      }, 800),  // Increased debounce to 800ms to reduce vision API load
+    [send]
   );
 
   const handleMount = useCallback(
@@ -82,6 +98,11 @@ export function TutorCanvas() {
       editor.store.listen(
         (entry) => {
           if (entry.source === 'user') {
+            // Skip updates if AI is currently drawing (to avoid feedback loop)
+            if (isAIDrawingRef.current) {
+              console.log('[Canvas] Skipping update - AI is drawing');
+              return;
+            }
             console.log('[Canvas] User change detected, triggering screenshot capture');
             sendCanvasUpdate(editor);
             captureScreenshotDebounced(editor);
@@ -121,6 +142,14 @@ export function TutorCanvas() {
         />
       </div>
 
+      {/* Grok's attention cursor overlay */}
+      <AttentionCursor
+        x={attention.x}
+        y={attention.y}
+        label={attention.label}
+        visible={attention.visible}
+      />
+
       <style jsx>{`
         .tutor-canvas {
           position: relative;
@@ -156,19 +185,24 @@ export function TutorCanvas() {
           gap: 2px;
         }
 
-        /* Style toolbar buttons */
-        .tlui-button {
+        /* Style toolbar buttons - exclude style panel to preserve color swatches */
+        .tlui-toolbar .tlui-button {
           color: rgba(255, 255, 255, 0.8) !important;
         }
 
-        .tlui-button:hover {
+        .tlui-toolbar .tlui-button:hover {
           background: rgba(255, 255, 255, 0.1) !important;
         }
 
-        .tlui-button[data-state="selected"],
-        .tlui-button[aria-pressed="true"] {
+        .tlui-toolbar .tlui-button[data-state="selected"],
+        .tlui-toolbar .tlui-button[aria-pressed="true"] {
           background: rgba(99, 102, 241, 0.3) !important;
           color: #fff !important;
+        }
+
+        /* Style panel button text (not icons/colors) */
+        .tlui-style-panel .tlui-button__label {
+          color: rgba(255, 255, 255, 0.8);
         }
 
         /* Style panel (color/style picker) */
@@ -185,8 +219,13 @@ export function TutorCanvas() {
           border-radius: 12px !important;
         }
 
-        /* Hide the quick actions (duplicate, delete etc) floating panel */
+        /* Style the top right area (contains StylePanel when shapes are selected) */
         .tlui-layout__top__right {
+          /* Keep visible for StylePanel access */
+        }
+
+        /* Hide quick actions but keep StylePanel */
+        .tlui-quick-actions {
           display: none !important;
         }
       `}</style>

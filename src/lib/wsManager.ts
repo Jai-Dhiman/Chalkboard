@@ -1,6 +1,6 @@
 import type { WSClientMessage, WSServerMessage } from '@/types';
 
-const WS_URL = 'ws://localhost:8080/ws';
+const WS_BASE_URL = 'ws://localhost:8080/ws';
 
 type MessageHandler = (message: WSServerMessage) => void;
 type StatusHandler = (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
@@ -11,10 +11,16 @@ class WebSocketManager {
   private messageHandler: MessageHandler | null = null;
   private statusHandler: StatusHandler | null = null;
   private isConnecting = false;
+  private sampleRate: number | null = null;
 
   setHandlers(onMessage: MessageHandler, onStatus: StatusHandler) {
     this.messageHandler = onMessage;
     this.statusHandler = onStatus;
+  }
+
+  setSampleRate(rate: number) {
+    this.sampleRate = rate;
+    console.log(`[WSManager] Sample rate set to ${rate}Hz`);
   }
 
   connect() {
@@ -25,10 +31,17 @@ class WebSocketManager {
     }
 
     this.isConnecting = true;
-    console.log('[WSManager] Connecting to', WS_URL);
+
+    // Build URL with sample rate if available
+    let wsUrl = WS_BASE_URL;
+    if (this.sampleRate) {
+      wsUrl += `?sampleRate=${this.sampleRate}`;
+    }
+
+    console.log('[WSManager] Connecting to', wsUrl);
     this.statusHandler?.('connecting');
 
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       console.log('[WSManager] Connected');

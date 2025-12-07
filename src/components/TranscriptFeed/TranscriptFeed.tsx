@@ -94,7 +94,7 @@ export function TranscriptFeed({ messages }: { messages: Message[] }) {
         }
 
         .transcript-message--tutor {
-          color: #a5b4fc;
+          color: rgba(255, 255, 255, 0.95);
           text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
         }
 

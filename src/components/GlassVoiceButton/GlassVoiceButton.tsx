@@ -8,7 +8,7 @@ import { VoiceState } from '@/types';
 interface GlassVoiceButtonProps {
   state: VoiceState;
   audioLevel?: number;
-  onPress: () => void;
+  onPress?: () => void;
 }
 
 interface GlassOrbProps {
@@ -233,21 +233,26 @@ function Scene({ state, audioLevel }: GlassOrbProps) {
 
 export function GlassVoiceButton({ state, audioLevel = 0, onPress }: GlassVoiceButtonProps) {
   const handleClick = () => {
-    console.log('[GlassVoiceButton] Clicked, calling onPress');
-    onPress();
+    if (onPress) {
+      console.log('[GlassVoiceButton] Clicked, calling onPress');
+      onPress();
+    }
   };
+
+  // In always-on mode (no onPress), this is just a visual indicator
+  const isInteractive = !!onPress;
 
   return (
     <div
-      onClick={handleClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
-      aria-label={state === 'listening' ? 'Stop listening' : 'Start talking'}
+      onClick={isInteractive ? handleClick : undefined}
+      role={isInteractive ? 'button' : undefined}
+      tabIndex={isInteractive ? 0 : undefined}
+      onKeyDown={isInteractive ? (e) => e.key === 'Enter' && handleClick() : undefined}
+      aria-label={isInteractive ? (state === 'listening' ? 'Stop listening' : 'Start talking') : 'Voice indicator - always listening'}
       style={{
         width: '100px',
         height: '100px',
-        cursor: 'pointer',
+        cursor: isInteractive ? 'pointer' : 'default',
         position: 'relative',
         borderRadius: '50%',
         overflow: 'hidden',

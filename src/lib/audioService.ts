@@ -1,8 +1,8 @@
 type AudioLevelCallback = (level: number) => void;
 type AudioChunkCallback = (chunk: string) => void;
 
-// Grok uses 24kHz PCM16
-const TARGET_SAMPLE_RATE = 24000;
+// Chunk duration in milliseconds (matches working xai-voice-examples)
+const CHUNK_DURATION_MS = 100;
 
 class AudioService {
   private audioContext: AudioContext | null = null;
@@ -15,9 +15,15 @@ class AudioService {
   private isCapturing = false;
   private inputSampleRate = 48000; // Will be set on capture
 
+  // Audio buffer for chunking (like working example)
+  private audioBuffer: Float32Array[] = [];
+  private totalSamples = 0;
+
   // Playback
   private playbackContext: AudioContext | null = null;
-  private nextPlayTime = 0;
+  private playbackQueue: Float32Array[] = [];
+  private isPlaying = false;
+  private currentPlaybackSource: AudioBufferSourceNode | null = null;
 
   async requestMicrophonePermission(): Promise<boolean> {
     try {
@@ -33,10 +39,10 @@ class AudioService {
   async startCapture(
     onAudioLevel: AudioLevelCallback,
     onAudioChunk: AudioChunkCallback
-  ): Promise<void> {
+  ): Promise<number> {
     if (this.isCapturing) {
       console.log('[AudioService] Already capturing');
-      return;
+      return this.inputSampleRate;
     }
 
     console.log('[AudioService] Starting capture...');
@@ -44,9 +50,21 @@ class AudioService {
     this.audioLevelCallback = onAudioLevel;
     this.audioChunkCallback = onAudioChunk;
 
-    // Get microphone stream first (let browser choose sample rate)
+    // Reset audio buffer
+    this.audioBuffer = [];
+    this.totalSamples = 0;
+
+    // Create audio context first to get native sample rate (like working example)
+    this.audioContext = new AudioContext();
+    this.inputSampleRate = this.audioContext.sampleRate;
+
+    console.log(`[AudioService] Audio context sample rate: ${this.inputSampleRate}Hz (native)`);
+
+    // Get microphone stream with native sample rate
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
+        sampleRate: this.inputSampleRate,
+        channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
@@ -55,12 +73,10 @@ class AudioService {
 
     console.log('[AudioService] Got media stream');
 
-    // Create audio context - let browser use its default sample rate
-    // We'll resample to 24kHz before sending
-    this.audioContext = new AudioContext();
-    this.inputSampleRate = this.audioContext.sampleRate;
-
-    console.log(`[AudioService] Audio context sample rate: ${this.inputSampleRate}Hz, target: ${TARGET_SAMPLE_RATE}Hz`);
+    // Resume context if suspended
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+    }
 
     const source = this.audioContext.createMediaStreamSource(this.mediaStream);
 
@@ -69,33 +85,70 @@ class AudioService {
     this.analyser.fftSize = 256;
     source.connect(this.analyser);
 
-    // Use ScriptProcessor for audio chunks
-    // Use larger buffer for lower sample rates
+    // Use ScriptProcessor for audio chunks (like working example)
     const bufferSize = 4096;
     this.processor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+
+    // Calculate chunk size in samples for ~100ms chunks
+    const chunkSizeSamples = Math.floor((this.inputSampleRate * CHUNK_DURATION_MS) / 1000);
 
     this.processor.onaudioprocess = (event) => {
       const inputData = event.inputBuffer.getChannelData(0);
 
-      // Resample to target rate if needed
-      let processedData: Float32Array;
-      if (this.inputSampleRate !== TARGET_SAMPLE_RATE) {
-        processedData = this.resample(inputData, this.inputSampleRate, TARGET_SAMPLE_RATE);
-      } else {
-        processedData = inputData;
+      // Calculate audio level for visualization
+      let sum = 0;
+      for (let i = 0; i < inputData.length; i++) {
+        sum += inputData[i] * inputData[i];
       }
+      const rms = Math.sqrt(sum / inputData.length);
+      this.audioLevelCallback?.(rms);
 
-      const base64Chunk = this.floatArrayToBase64PCM16(processedData);
-      this.audioChunkCallback?.(base64Chunk);
+      // Buffer audio data (like working example)
+      this.audioBuffer.push(new Float32Array(inputData));
+      this.totalSamples += inputData.length;
+
+      // Send chunks of ~100ms (like working example)
+      while (this.totalSamples >= chunkSizeSamples) {
+        const chunk = new Float32Array(chunkSizeSamples);
+        let offset = 0;
+
+        while (offset < chunkSizeSamples && this.audioBuffer.length > 0) {
+          const buffer = this.audioBuffer[0];
+          const needed = chunkSizeSamples - offset;
+          const available = buffer.length;
+
+          if (available <= needed) {
+            // Use entire buffer
+            chunk.set(buffer, offset);
+            offset += available;
+            this.totalSamples -= available;
+            this.audioBuffer.shift();
+          } else {
+            // Use part of buffer
+            chunk.set(buffer.subarray(0, needed), offset);
+            this.audioBuffer[0] = buffer.subarray(needed);
+            offset += needed;
+            this.totalSamples -= needed;
+          }
+        }
+
+        // Convert to PCM16 and send (no resampling - send at native rate)
+        const base64Chunk = this.floatArrayToBase64PCM16(chunk);
+        this.audioChunkCallback?.(base64Chunk);
+      }
     };
 
     source.connect(this.processor);
+    // Note: ScriptProcessorNode requires connection to destination to work
     this.processor.connect(this.audioContext.destination);
 
     this.isCapturing = true;
     this.updateAudioLevel();
 
-    console.log('[AudioService] Capture started');
+    console.log(`[AudioService] Capture started at ${this.inputSampleRate}Hz`);
+
+    // Return the sample rate for immediate use (like working example)
+    return this.inputSampleRate;
   }
 
   stopCapture(): void {
@@ -127,50 +180,91 @@ class AudioService {
 
     this.analyser = null;
     this.isCapturing = false;
+    this.audioBuffer = [];
+    this.totalSamples = 0;
     this.audioLevelCallback?.(0);
 
     console.log('[AudioService] Capture stopped');
   }
 
+  getSampleRate(): number {
+    return this.inputSampleRate;
+  }
+
   async playAudio(base64Audio: string): Promise<void> {
-    // Create playback context if needed
-    if (!this.playbackContext || this.playbackContext.state === 'closed') {
-      this.playbackContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
-      this.nextPlayTime = this.playbackContext.currentTime;
+    try {
+      // Create playback context if needed (use native sample rate for playback)
+      if (!this.playbackContext || this.playbackContext.state === 'closed') {
+        this.playbackContext = new AudioContext();
+      }
+
+      // Resume if suspended (browser autoplay policy)
+      if (this.playbackContext.state === 'suspended') {
+        await this.playbackContext.resume();
+      }
+
+      // Decode base64 PCM16 to Float32
+      const float32 = this.base64PCM16ToFloat32(base64Audio);
+
+      // Add to playback queue
+      this.playbackQueue.push(float32);
+
+      // Start playback if not already playing
+      if (!this.isPlaying) {
+        this.isPlaying = true;
+        this.playNextChunk();
+      }
+    } catch (error) {
+      console.error('[AudioService] Error playing audio:', error);
+    }
+  }
+
+  private playNextChunk(): void {
+    if (!this.playbackContext || this.playbackQueue.length === 0) {
+      this.isPlaying = false;
+      this.currentPlaybackSource = null;
+      return;
     }
 
-    // Resume if suspended (browser autoplay policy)
-    if (this.playbackContext.state === 'suspended') {
-      await this.playbackContext.resume();
-    }
+    const chunk = this.playbackQueue.shift()!;
+    // Use the sample rate that the audio was encoded at (same as input rate we configured)
+    // This ensures proper playback even if playback context has different native rate
+    const audioBuffer = this.playbackContext.createBuffer(1, chunk.length, this.inputSampleRate);
+    audioBuffer.getChannelData(0).set(chunk);
 
-    // Decode base64 PCM16 to Float32
-    const pcm16 = this.base64ToPCM16(base64Audio);
-    const float32 = this.pcm16ToFloat32(pcm16);
-
-    // Create audio buffer
-    const audioBuffer = this.playbackContext.createBuffer(1, float32.length, TARGET_SAMPLE_RATE);
-    audioBuffer.copyToChannel(float32, 0);
-
-    // Create and schedule source
     const source = this.playbackContext.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(this.playbackContext.destination);
 
-    // Schedule playback
-    const startTime = Math.max(this.nextPlayTime, this.playbackContext.currentTime);
-    source.start(startTime);
+    // Store reference for interruption handling
+    this.currentPlaybackSource = source;
 
-    // Update next play time for seamless playback
-    this.nextPlayTime = startTime + audioBuffer.duration;
+    source.onended = () => {
+      if (this.currentPlaybackSource === source) {
+        this.currentPlaybackSource = null;
+      }
+      this.playNextChunk();
+    };
+
+    source.start();
   }
 
   stopPlayback(): void {
-    if (this.playbackContext) {
-      this.playbackContext.close();
-      this.playbackContext = null;
-      this.nextPlayTime = 0;
+    // Stop currently playing audio source
+    if (this.currentPlaybackSource) {
+      try {
+        this.currentPlaybackSource.stop();
+        this.currentPlaybackSource.disconnect();
+      } catch {
+        // Source may already be stopped
+      }
+      this.currentPlaybackSource = null;
     }
+
+    // Clear the playback queue
+    this.playbackQueue = [];
+    this.isPlaying = false;
+    console.log('[AudioService] Playback stopped (interrupted)');
   }
 
   private updateAudioLevel(): void {
@@ -194,61 +288,39 @@ class AudioService {
     this.animationFrameId = requestAnimationFrame(() => this.updateAudioLevel());
   }
 
-  // Simple linear interpolation resampling
-  private resample(input: Float32Array, fromRate: number, toRate: number): Float32Array {
-    if (fromRate === toRate) {
-      return input;
-    }
-
-    const ratio = fromRate / toRate;
-    const outputLength = Math.floor(input.length / ratio);
-    const output = new Float32Array(outputLength);
-
-    for (let i = 0; i < outputLength; i++) {
-      const srcIndex = i * ratio;
-      const srcIndexFloor = Math.floor(srcIndex);
-      const srcIndexCeil = Math.min(srcIndexFloor + 1, input.length - 1);
-      const t = srcIndex - srcIndexFloor;
-
-      // Linear interpolation
-      output[i] = input[srcIndexFloor] * (1 - t) + input[srcIndexCeil] * t;
-    }
-
-    return output;
-  }
-
-  // Convert Float32Array to base64-encoded PCM16
+  // Convert Float32Array to base64-encoded PCM16 (matches working example)
   private floatArrayToBase64PCM16(floatArray: Float32Array): string {
-    const int16Array = new Int16Array(floatArray.length);
+    const pcm16 = new Int16Array(floatArray.length);
     for (let i = 0; i < floatArray.length; i++) {
       const s = Math.max(-1, Math.min(1, floatArray[i]));
-      int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
     }
-    const bytes = new Uint8Array(int16Array.buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
+    return this.arrayBufferToBase64(pcm16.buffer);
   }
 
-  // Convert base64 to Int16Array (PCM16)
-  private base64ToPCM16(base64: string): Int16Array {
+  // Convert base64 PCM16 to Float32Array for playback (matches working example)
+  private base64PCM16ToFloat32(base64: string): Float32Array {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
-    return new Int16Array(bytes.buffer);
-  }
-
-  // Convert PCM16 to Float32Array
-  private pcm16ToFloat32(pcm16: Int16Array): Float32Array {
+    const pcm16 = new Int16Array(bytes.buffer);
     const float32 = new Float32Array(pcm16.length);
     for (let i = 0; i < pcm16.length; i++) {
-      float32[i] = pcm16[i] / 32768;
+      float32[i] = pcm16[i] / (pcm16[i] < 0 ? 0x8000 : 0x7fff);
     }
     return float32;
+  }
+
+  // Convert ArrayBuffer to base64
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
   }
 
   getIsCapturing(): boolean {

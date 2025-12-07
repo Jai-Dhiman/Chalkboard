@@ -30,81 +30,102 @@ function delay(ms: number): Promise<void> {
 /**
  * Animate a draw shape by progressively adding points to segments
  * This creates the effect of the shape being drawn in real-time
+ *
+ * IMPORTANT: tldraw requires each segment to have at least 2 points.
+ * This function handles shape creation internally to ensure validity.
  */
 export async function animateDrawShape(
   editor: Editor,
   shapeId: TLShapeId,
   targetSegments: DrawShapeSegment[],
   baseProps: Record<string, unknown>,
-  options: Partial<AnimationOptions> = {}
+  options: Partial<AnimationOptions> = {},
+  position?: { x: number; y: number }
 ): Promise<void> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
-  if (targetSegments.length === 0) return;
+  // Filter out segments with fewer than 2 points (tldraw requirement)
+  const validSegments = targetSegments.filter(seg => seg.points.length >= 2);
 
-  // Start with shape having empty segments
+  if (validSegments.length === 0) return;
+
+  // Track if we've created the shape yet
+  let shapeCreated = false;
+
+  // Accumulated segments for updates (only segments with >= 2 points)
   const animatedSegments: DrawShapeSegment[] = [];
 
   // Process each segment (stroke) sequentially
-  for (let segmentIndex = 0; segmentIndex < targetSegments.length; segmentIndex++) {
-    const targetSegment = targetSegments[segmentIndex];
+  for (let segmentIndex = 0; segmentIndex < validSegments.length; segmentIndex++) {
+    const targetSegment = validSegments[segmentIndex];
     const totalPoints = targetSegment.points.length;
 
-    if (totalPoints === 0) continue;
-
-    // Initialize this segment with empty points
-    animatedSegments.push({
-      type: 'free',
-      points: [],
-    });
-
     // Progressively add points to this segment
-    for (let pointIndex = 0; pointIndex < totalPoints; pointIndex += opts.pointsPerFrame) {
-      const endIndex = Math.min(pointIndex + opts.pointsPerFrame, totalPoints);
+    // Start at 2 points minimum to satisfy tldraw's Polyline2d requirement
+    for (let pointIndex = 2; pointIndex <= totalPoints; pointIndex += opts.pointsPerFrame) {
+      const endIndex = Math.min(pointIndex, totalPoints);
       const partialPoints = targetSegment.points.slice(0, endIndex);
 
-      // Update the current segment with partial points
-      animatedSegments[segmentIndex] = {
-        type: 'free',
-        points: partialPoints,
-      };
+      // Build current state of segments
+      const currentSegments = [
+        ...animatedSegments,
+        { type: 'free' as const, points: partialPoints },
+      ];
 
-      // Update the shape
-      editor.updateShape({
-        id: shapeId,
-        type: 'draw',
-        props: {
-          ...baseProps,
-          segments: [...animatedSegments],
-          isComplete: false,
-        },
-      });
+      if (!shapeCreated) {
+        // Create the shape with initial valid segments
+        editor.createShape({
+          id: shapeId,
+          type: 'draw',
+          x: position?.x ?? 0,
+          y: position?.y ?? 0,
+          props: {
+            ...baseProps,
+            segments: currentSegments,
+            isComplete: false,
+          },
+        });
+        shapeCreated = true;
+      } else {
+        // Update the shape
+        editor.updateShape({
+          id: shapeId,
+          type: 'draw',
+          props: {
+            ...baseProps,
+            segments: currentSegments,
+            isComplete: false,
+          },
+        });
+      }
 
       await delay(opts.frameInterval);
     }
 
-    // Ensure final segment has all points
-    animatedSegments[segmentIndex] = {
+    // Add completed segment to our accumulated list
+    animatedSegments.push({
       type: 'free',
       points: targetSegment.points,
-    };
+    });
 
     // Brief pause between strokes
-    if (segmentIndex < targetSegments.length - 1) {
+    if (segmentIndex < validSegments.length - 1) {
       await delay(opts.strokeDelay);
     }
   }
 
   // Mark shape as complete
-  editor.updateShape({
-    id: shapeId,
-    type: 'draw',
-    props: {
-      ...baseProps,
-      segments: animatedSegments,
-      isComplete: true,
-    },
-  });
+  if (shapeCreated) {
+    editor.updateShape({
+      id: shapeId,
+      type: 'draw',
+      props: {
+        ...baseProps,
+        segments: animatedSegments,
+        isComplete: true,
+      },
+    });
+  }
 }
 
 /**
@@ -123,21 +144,15 @@ export async function animateMultipleShapes(
   options: Partial<AnimationOptions> = {}
 ): Promise<void> {
   for (const shape of shapes) {
-    // Create the shape first with empty segments
-    editor.createShape({
-      id: shape.id,
-      type: 'draw',
-      x: shape.x,
-      y: shape.y,
-      props: {
-        ...shape.props,
-        segments: [],
-        isComplete: false,
-      },
-    });
-
-    // Animate it
-    await animateDrawShape(editor, shape.id, shape.segments, shape.props, options);
+    // animateDrawShape handles shape creation internally to ensure valid segments
+    await animateDrawShape(
+      editor,
+      shape.id,
+      shape.segments,
+      shape.props,
+      options,
+      { x: shape.x, y: shape.y }
+    );
   }
 }
 

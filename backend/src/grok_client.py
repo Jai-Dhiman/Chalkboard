@@ -307,6 +307,39 @@ class GrokVoiceClient:
         }
         await self._ws.send(json.dumps(msg))
 
+    async def send_function_result(self, call_id: str, result: str, request_response: bool = True) -> None:
+        """Send the result of a function call back to Grok.
+
+        After Grok calls a function (tool), we need to send the result back
+        so it can continue generating its response with that information.
+
+        Args:
+            call_id: The function call ID from Grok
+            result: The result string to send back
+            request_response: If True, also sends response.create to trigger Grok's response.
+                             Set to False when batching multiple function results - only the
+                             last one should trigger the response.
+        """
+        if not self._ws:
+            return
+
+        print(f"[Grok] Sending function result for call_id {call_id}: {result[:100]}...")
+
+        # Create the function call output item
+        msg = {
+            "type": GrokMessageType.CONVERSATION_ITEM_CREATE.value,
+            "item": {
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": result,
+            },
+        }
+        await self._ws.send(json.dumps(msg))
+
+        # Only request response if this is the last function result in a batch
+        if request_response:
+            await self._ws.send(json.dumps({"type": GrokMessageType.RESPONSE_CREATE.value}))
+
     async def _receive_loop(self) -> None:
         """Receive and process messages from Grok."""
         if not self._ws:
@@ -414,12 +447,17 @@ class GrokVoiceClient:
             if self._current_function_call and self.on_function_call:
                 try:
                     args = json.loads(self._function_call_args) if self._function_call_args else {}
-                    print(f"[Grok] Function call complete: {self._current_function_call['name']} with args: {args}")
-                    self.on_function_call(
-                        self._current_function_call["call_id"],
-                        self._current_function_call["name"],
-                        args,
-                    )
+                    func_name = self._current_function_call["name"]
+                    call_id = self._current_function_call["call_id"]
+                    print(f"[Grok] Function call complete: {func_name} with args: {args}")
+
+                    # For check_canvas, we need to cancel the response immediately
+                    # to prevent Grok from speaking "I don't see your answer" while we analyze
+                    if func_name == "check_canvas":
+                        print("[Grok] Cancelling response to wait for vision analysis...")
+                        await self.cancel_response()
+
+                    self.on_function_call(call_id, func_name, args)
                 except json.JSONDecodeError as e:
                     print(f"[Grok] Failed to parse function args: {e}")
             self._current_function_call = None

@@ -31,6 +31,15 @@ class TldrawShapeData(BaseModel):
     props: dict
 
 
+# Screenshot bounds for coordinate transformation
+class ScreenshotBounds(BaseModel):
+    x: float  # Canvas x coordinate of content bounds start
+    y: float  # Canvas y coordinate of content bounds start
+    width: float
+    height: float
+    padding: float  # Padding added around content in screenshot
+
+
 # Canvas Commands
 class AddShapeCommand(BaseModel):
     action: Literal["ADD_SHAPE"] = "ADD_SHAPE"
@@ -68,6 +77,21 @@ class AddAnimatedTextCommand(BaseModel):
     size: str = "m"
 
 
+class AttentionToCommand(BaseModel):
+    action: Literal["ATTENTION_TO"] = "ATTENTION_TO"
+    x: float
+    y: float
+    label: str | None = None
+
+
+class ClearAttentionCommand(BaseModel):
+    action: Literal["CLEAR_ATTENTION"] = "CLEAR_ATTENTION"
+
+
+class ClearCanvasCommand(BaseModel):
+    action: Literal["CLEAR_CANVAS"] = "CLEAR_CANVAS"
+
+
 CanvasCommand = Union[
     AddShapeCommand,
     AddAnimatedTextCommand,
@@ -75,6 +99,9 @@ CanvasCommand = Union[
     DeleteShapeCommand,
     HighlightCommand,
     PanToCommand,
+    AttentionToCommand,
+    ClearAttentionCommand,
+    ClearCanvasCommand,
 ]
 
 
@@ -124,7 +151,7 @@ WSClientMessage = Union[
 # Server -> Client Messages
 class VoiceStateMessage(BaseModel):
     type: Literal["VOICE_STATE"] = "VOICE_STATE"
-    state: Literal["listening", "processing", "speaking"]
+    state: Literal["idle", "listening", "processing", "speaking"]
 
 
 class VoiceAudioServerMessage(BaseModel):
@@ -154,11 +181,27 @@ class ErrorMessage(BaseModel):
     message: str
 
 
+class CelebrateMessage(BaseModel):
+    type: Literal["CELEBRATE"] = "CELEBRATE"
+    intensity: Literal["small", "big"] = "big"
+
+
+class SessionReadyMessage(BaseModel):
+    type: Literal["SESSION_READY"] = "SESSION_READY"
+
+
+class ClearCheckContextMessage(BaseModel):
+    type: Literal["CLEAR_CHECK_CONTEXT"] = "CLEAR_CHECK_CONTEXT"
+
+
 WSServerMessage = Union[
     VoiceStateMessage,
     VoiceAudioServerMessage,
     VoiceTranscriptMessage,
     CanvasCommandMessage,
     TutorStatusMessage,
+    CelebrateMessage,
+    SessionReadyMessage,
+    ClearCheckContextMessage,
     ErrorMessage,
 ]

@@ -21,6 +21,7 @@ export function VoicePanel() {
       <div className="voice-panel__center">
         {/* Subtle glow background for visual focus */}
         <div className="voice-panel__orb-glow" />
+        {/* Click to talk mode */}
         <GlassVoiceButton
           state={voiceState}
           audioLevel={audioLevel}
