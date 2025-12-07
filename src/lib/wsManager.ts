@@ -1,6 +1,8 @@
 import type { WSClientMessage, WSServerMessage } from '@/types';
 
-const WS_BASE_URL = 'ws://localhost:8080/ws';
+const WS_BASE_URL = import.meta.env.DEV
+  ? 'ws://localhost:8080/ws'
+  : 'wss://chalkboard-api-production.up.railway.app/ws';
 
 type MessageHandler = (message: WSServerMessage) => void;
 type StatusHandler = (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
