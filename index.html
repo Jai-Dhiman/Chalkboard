@@ -1,15 +1,96 @@
 
   <!DOCTYPE html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>Chalkboard - AI Math Tutor</title>
-    </head>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chalkboard - AI Math Tutor</title>
+    <script>
+      // Minimal Buffer polyfill for hershey font library
+      (function() {
+        if (typeof window.Buffer !== 'undefined') return;
 
-    <body>
-      <div id="root"></div>
-      <script type="module" src="/src/main.tsx"></script>
-    </body>
-  </html>
+        function Buffer(arg, encodingOrOffset, length) {
+          if (typeof arg === 'number') {
+            return new Uint8Array(arg);
+          }
+          if (typeof arg === 'string') {
+            return new TextEncoder().encode(arg);
+          }
+          if (arg instanceof ArrayBuffer || arg instanceof Uint8Array) {
+            return new Uint8Array(arg);
+          }
+          if (Array.isArray(arg)) {
+            return new Uint8Array(arg);
+          }
+          return new Uint8Array(0);
+        }
+
+        Buffer.from = function(value, encodingOrOffset, length) {
+          if (typeof value === 'string') {
+            var encoding = encodingOrOffset || 'utf8';
+            if (encoding === 'base64') {
+              var binary = atob(value);
+              var bytes = new Uint8Array(binary.length);
+              for (var i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+              }
+              return bytes;
+            }
+            return new TextEncoder().encode(value);
+          }
+          if (value instanceof ArrayBuffer) {
+            return new Uint8Array(value);
+          }
+          if (value instanceof Uint8Array) {
+            return new Uint8Array(value);
+          }
+          if (Array.isArray(value)) {
+            return new Uint8Array(value);
+          }
+          return new Uint8Array(0);
+        };
+
+        Buffer.alloc = function(size, fill, encoding) {
+          var buf = new Uint8Array(size);
+          if (fill !== undefined) {
+            buf.fill(typeof fill === 'number' ? fill : 0);
+          }
+          return buf;
+        };
+
+        Buffer.allocUnsafe = Buffer.alloc;
+
+        Buffer.isBuffer = function(obj) {
+          return obj instanceof Uint8Array;
+        };
+
+        Buffer.byteLength = function(string, encoding) {
+          return new TextEncoder().encode(string).length;
+        };
+
+        Buffer.concat = function(list, totalLength) {
+          if (list.length === 0) return new Uint8Array(0);
+          if (list.length === 1) return list[0];
+
+          var total = totalLength || list.reduce(function(acc, buf) { return acc + buf.length; }, 0);
+          var result = new Uint8Array(total);
+          var offset = 0;
+          for (var i = 0; i < list.length; i++) {
+            result.set(list[i], offset);
+            offset += list[i].length;
+          }
+          return result;
+        };
+
+        window.Buffer = Buffer;
+      })();
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
   

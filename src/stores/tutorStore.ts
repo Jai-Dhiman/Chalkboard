@@ -26,6 +26,9 @@ interface TutorStoreState {
   // Canvas Reference (for external access)
   editorRef: Editor | null;
 
+  // Live canvas screenshot (updated on canvas changes)
+  latestCanvasScreenshot: string | null;
+
   // Mock Mode
   isMockMode: boolean;
 }
@@ -47,6 +50,8 @@ interface TutorStoreActions {
 
   // Canvas Actions
   setEditorRef: (editor: Editor | null) => void;
+  clearCanvas: () => void;
+  setLatestCanvasScreenshot: (screenshot: string | null) => void;
 
   // Handle Server Messages
   handleServerMessage: (message: WSServerMessage) => void;
@@ -67,6 +72,7 @@ const initialState: TutorStoreState = {
   messages: [],
   connectionStatus: 'disconnected',
   editorRef: null,
+  latestCanvasScreenshot: null,
   isMockMode: true,
 };
 
@@ -93,6 +99,18 @@ export const useTutorStore = create<TutorStore>()((set, get) => ({
   clearMessages: () => set({ messages: [] }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
   setEditorRef: (editorRef) => set({ editorRef }),
+
+  clearCanvas: () => {
+    const editor = get().editorRef;
+    if (editor) {
+      const shapeIds = editor.getCurrentPageShapeIds();
+      editor.deleteShapes([...shapeIds]);
+    }
+    // Clear the screenshot too since canvas is now empty
+    set({ latestCanvasScreenshot: null });
+  },
+
+  setLatestCanvasScreenshot: (latestCanvasScreenshot) => set({ latestCanvasScreenshot }),
 
   handleServerMessage: (message) => {
     const { addMessage, setVoiceState, setTutorState, editorRef } = get();

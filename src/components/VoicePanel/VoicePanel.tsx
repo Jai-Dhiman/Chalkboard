@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useCallback, FormEvent } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, Trash2 } from 'lucide-react';
 import { useVoice } from '@/hooks/useVoice';
 import { useMathTutor } from '@/hooks/useMathTutor';
+import { useTutorStore } from '@/stores/tutorStore';
 import { GlassVoiceButton } from '../GlassVoiceButton';
 import { TranscriptFeed } from '../TranscriptFeed/TranscriptFeed';
 import { TutorStatus } from '../TutorStatus/TutorStatus';
@@ -11,6 +12,7 @@ import { TutorStatus } from '../TutorStatus/TutorStatus';
 export function VoicePanel() {
   const [textInput, setTextInput] = useState('');
   const { submitRequest, isProcessing, isConfigured } = useMathTutor();
+  const clearCanvas = useTutorStore((state) => state.clearCanvas);
 
   const {
     voiceState,
@@ -69,6 +71,14 @@ export function VoicePanel() {
             disabled={isProcessing || !isConfigured}
           >
             {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          </button>
+          <button
+            type="button"
+            className="voice-panel__clear"
+            aria-label="Clear canvas"
+            onClick={clearCanvas}
+          >
+            <Trash2 className="w-4 h-4" />
           </button>
         </form>
       </div>
@@ -157,6 +167,24 @@ export function VoicePanel() {
         .voice-panel__send:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+
+        .voice-panel__clear {
+          padding: var(--space-2) var(--space-3);
+          border-radius: var(--radius-md);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: var(--voice-surface);
+          color: var(--text-muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .voice-panel__clear:hover {
+          border-color: var(--accent-error);
+          color: var(--accent-error);
         }
 
         .voice-panel__input:disabled {

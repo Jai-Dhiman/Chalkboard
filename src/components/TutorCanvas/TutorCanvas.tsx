@@ -6,16 +6,29 @@ import 'tldraw/tldraw.css';
 import { useTutorStore } from '@/stores/tutorStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { debounce } from '@/lib/debounce';
+import { captureCanvasScreenshot } from '@/lib/mathTutor';
 import type { TldrawShapeData } from '@/types';
 
 export function TutorCanvas() {
   const { send } = useWebSocket();
   const setEditorRef = useTutorStore((state) => state.setEditorRef);
+  const setLatestCanvasScreenshot = useTutorStore((state) => state.setLatestCanvasScreenshot);
   const voiceState = useTutorStore((state) => state.voiceState);
   const connectionStatus = useTutorStore((state) => state.connectionStatus);
   const editorRef = useRef<Editor | null>(null);
 
-  // Debounced canvas update sender
+  // Debounced screenshot capture for AI vision
+  const captureScreenshotDebounced = useMemo(
+    () =>
+      debounce(async (editor: Editor) => {
+        const screenshot = await captureCanvasScreenshot(editor);
+        setLatestCanvasScreenshot(screenshot);
+        console.log('[Canvas] Screenshot captured:', screenshot ? 'yes' : 'empty canvas');
+      }, 500),
+    [setLatestCanvasScreenshot]
+  );
+
+  // Debounced canvas update sender (for WebSocket backend)
   const sendCanvasUpdate = useMemo(
     () =>
       debounce((editor: Editor) => {
@@ -54,13 +67,22 @@ export function TutorCanvas() {
       editor.store.listen(
         (entry) => {
           if (entry.source === 'user') {
+            console.log('[Canvas] User change detected, triggering screenshot capture');
             sendCanvasUpdate(editor);
+            captureScreenshotDebounced(editor);
           }
         },
         { scope: 'document', source: 'user' }
       );
+
+      // Also capture initial screenshot if canvas already has content
+      const initialShapes = editor.getCurrentPageShapes();
+      if (initialShapes.length > 0) {
+        console.log('[Canvas] Initial shapes detected, capturing screenshot');
+        captureScreenshotDebounced(editor);
+      }
     },
-    [setEditorRef, sendCanvasUpdate]
+    [setEditorRef, sendCanvasUpdate, captureScreenshotDebounced]
   );
 
   // Cleanup
