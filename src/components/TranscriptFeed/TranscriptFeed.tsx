@@ -20,10 +20,11 @@ export function TranscriptFeed({ messages }: { messages: Message[] }) {
   if (messages.length === 0) {
     return (
       <div className="transcript-empty">
-        <p style={{ 
-          fontSize: 'var(--text-sm)', 
-          color: 'var(--text-muted)',
-          fontStyle: 'italic'
+        <p style={{
+          fontSize: 'var(--text-sm)',
+          color: 'rgba(255, 255, 255, 0.5)',
+          fontStyle: 'italic',
+          textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
         }}>
           Conversation will appear here...
         </p>
@@ -34,11 +35,12 @@ export function TranscriptFeed({ messages }: { messages: Message[] }) {
   return (
     <div className="transcript-feed" ref={feedRef}>
       {messages.map((msg, i) => (
-        <div 
+        <div
           key={msg.id}
           className={cn(
             "transcript-message",
-            `transcript-message--${msg.role}`
+            `transcript-message--${msg.role}`,
+            msg.isOptimistic && "transcript-message--optimistic"
           )}
           style={{ animationDelay: `${i * 50}ms` }}
         >
@@ -53,29 +55,36 @@ export function TranscriptFeed({ messages }: { messages: Message[] }) {
         .transcript-empty {
           display: flex;
           align-items: center;
-          justify-content: center;
-          height: 120px;
+          justify-content: flex-start;
+          height: 80px;
+          padding: var(--space-2) var(--space-3);
+          background: rgba(0, 0, 0, 0.4);
+          border-radius: var(--radius-md);
+          backdrop-filter: blur(8px);
         }
 
         .transcript-feed {
           display: flex;
           flex-direction: column;
-          gap: var(--space-3);
-          max-height: 120px;
+          gap: var(--space-2);
+          max-height: 80px;
           overflow-y: auto;
-          padding: var(--space-4);
-          
+          padding: var(--space-2) var(--space-3);
+          background: rgba(0, 0, 0, 0.4);
+          border-radius: var(--radius-md);
+          backdrop-filter: blur(8px);
+
           /* Fade at top */
           mask-image: linear-gradient(
             to bottom,
             transparent 0%,
-            black 20%,
+            black 15%,
             black 100%
           );
           -webkit-mask-image: linear-gradient(
             to bottom,
             transparent 0%,
-            black 20%,
+            black 15%,
             black 100%
           );
         }
@@ -85,11 +94,27 @@ export function TranscriptFeed({ messages }: { messages: Message[] }) {
         }
 
         .transcript-message--tutor {
-          color: var(--accent-primary);
+          color: #a5b4fc;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
         }
 
         .transcript-message--student {
-          color: var(--text-muted);
+          color: rgba(255, 255, 255, 0.7);
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .transcript-message--optimistic {
+          opacity: 0.5;
+          animation: pulse-opacity 1.5s ease-in-out infinite;
+        }
+
+        .transcript-message--optimistic .transcript-message__content {
+          font-style: italic;
+        }
+
+        @keyframes pulse-opacity {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 0.7; }
         }
 
         .transcript-message__role {
@@ -97,9 +122,9 @@ export function TranscriptFeed({ messages }: { messages: Message[] }) {
           font-weight: 600;
           text-transform: uppercase;
           letter-spacing: 0.05em;
-          opacity: 0.6;
+          opacity: 0.8;
           display: block;
-          margin-bottom: var(--space-1);
+          margin-bottom: 2px;
         }
 
         .transcript-message__content {

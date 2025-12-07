@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useTutorStore } from '@/stores/tutorStore';
-import { useWebSocket } from './useWebSocket';
 import { audioService } from '@/lib/audioService';
 
 export function useVoice() {
-  const { send } = useWebSocket();
   const isRecordingRef = useRef(false);
 
   const voiceState = useTutorStore((state) => state.voiceState);
@@ -15,37 +13,49 @@ export function useVoice() {
   const setAudioLevel = useTutorStore((state) => state.setAudioLevel);
   const setTutorState = useTutorStore((state) => state.setTutorState);
   const connectionStatus = useTutorStore((state) => state.connectionStatus);
+  const send = useTutorStore((state) => state.send);
+  const addMessage = useTutorStore((state) => state.addMessage);
 
   const startListening = useCallback(async () => {
     if (isRecordingRef.current) {
+      console.log('[Voice] Already recording, skipping');
       return;
     }
 
     if (connectionStatus !== 'connected') {
-      console.warn('Cannot start listening: WebSocket not connected');
+      console.warn('[Voice] Cannot start listening: WebSocket not connected');
       return;
     }
 
     try {
+      console.log('[Voice] Requesting microphone permission...');
       await audioService.requestMicrophonePermission();
+      console.log('[Voice] Microphone permission granted');
 
       setVoiceState('listening');
       setTutorState({ type: 'listening' });
       isRecordingRef.current = true;
 
+      console.log('[Voice] Sending VOICE_START');
       send({ type: 'VOICE_START' });
 
+      let chunkCount = 0;
       await audioService.startCapture(
         (level) => setAudioLevel(level),
         (chunk) => {
           // Only send audio chunks if still recording
           if (isRecordingRef.current) {
+            chunkCount++;
+            if (chunkCount <= 3 || chunkCount % 50 === 0) {
+              console.log(`[Voice] Sending audio chunk #${chunkCount}, size: ${chunk.length}`);
+            }
             send({ type: 'VOICE_AUDIO', audio: chunk });
           }
         }
       );
+      console.log('[Voice] Audio capture started');
     } catch (error) {
-      console.error('Failed to start listening:', error);
+      console.error('[Voice] Failed to start listening:', error);
       setVoiceState('idle');
       setTutorState({ type: 'idle' });
       isRecordingRef.current = false;
@@ -61,18 +71,30 @@ export function useVoice() {
     audioService.stopCapture();
     isRecordingRef.current = false;
 
+    // Add optimistic user message (will be updated when backend sends transcript)
+    addMessage({
+      role: 'student',
+      content: '...',
+      isOptimistic: true,
+    });
+
     send({ type: 'VOICE_END' });
     setVoiceState('processing');
     setTutorState({ type: 'thinking' });
-  }, [send, setVoiceState, setTutorState]);
+  }, [send, setVoiceState, setTutorState, addMessage]);
 
   const toggleVoice = useCallback(() => {
-    if (voiceState === 'idle') {
+    const isRecording = isRecordingRef.current;
+    console.log('[Voice] toggleVoice called, isRecording:', isRecording, 'voiceState:', voiceState);
+
+    if (!isRecording) {
+      // Start recording
       startListening();
-    } else if (voiceState === 'listening') {
+    } else {
+      // Stop recording
       stopListening();
     }
-  }, [voiceState, startListening, stopListening]);
+  }, [startListening, stopListening, voiceState]);
 
   // Cleanup on unmount
   useEffect(() => {

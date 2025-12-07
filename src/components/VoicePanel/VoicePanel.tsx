@@ -1,43 +1,16 @@
 'use client';
 
-import { useState, useCallback, FormEvent } from 'react';
-import { Send, Loader2, Trash2 } from 'lucide-react';
 import { useVoice } from '@/hooks/useVoice';
-import { useMathTutor } from '@/hooks/useMathTutor';
-import { useTutorStore } from '@/stores/tutorStore';
 import { GlassVoiceButton } from '../GlassVoiceButton';
 import { TranscriptFeed } from '../TranscriptFeed/TranscriptFeed';
-import { TutorStatus } from '../TutorStatus/TutorStatus';
 
 export function VoicePanel() {
-  const [textInput, setTextInput] = useState('');
-  const { submitRequest, isProcessing, isConfigured } = useMathTutor();
-  const clearCanvas = useTutorStore((state) => state.clearCanvas);
-
   const {
     voiceState,
     messages,
-    tutorState,
     audioLevel,
     toggleVoice,
   } = useVoice();
-
-  const handleSubmit = useCallback(
-    async (e: FormEvent) => {
-      e.preventDefault();
-      if (!textInput.trim() || isProcessing) return;
-
-      const request = textInput.trim();
-      setTextInput('');
-
-      try {
-        await submitRequest(request);
-      } catch {
-        // Error already handled in hook
-      }
-    },
-    [textInput, isProcessing, submitRequest]
-  );
 
   return (
     <div className="voice-panel">
@@ -46,45 +19,17 @@ export function VoicePanel() {
       </div>
 
       <div className="voice-panel__center">
+        {/* Subtle glow background for visual focus */}
+        <div className="voice-panel__orb-glow" />
         <GlassVoiceButton
           state={voiceState}
           audioLevel={audioLevel}
           onPress={toggleVoice}
         />
-        <span className="voice-panel__hint">
-          {voiceState === 'idle' ? 'Tap to talk' : ''}
-        </span>
-
-        <form onSubmit={handleSubmit} className="voice-panel__input-form">
-          <input
-            type="text"
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            placeholder={isConfigured ? "Try: Create 4 quadratic equations" : "Set VITE_GROK_API_KEY in .env"}
-            className="voice-panel__input"
-            disabled={isProcessing || !isConfigured}
-          />
-          <button
-            type="submit"
-            className="voice-panel__send"
-            aria-label="Send"
-            disabled={isProcessing || !isConfigured}
-          >
-            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </button>
-          <button
-            type="button"
-            className="voice-panel__clear"
-            aria-label="Clear canvas"
-            onClick={clearCanvas}
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </form>
       </div>
 
       <div className="voice-panel__right">
-        <TutorStatus state={tutorState} />
+        {/* Empty for balance */}
       </div>
 
       <style jsx>{`
@@ -93,115 +38,62 @@ export function VoicePanel() {
           grid-template-columns: 1fr auto 1fr;
           align-items: center;
           gap: var(--space-4);
-          padding: var(--space-4) var(--space-6);
-          background: var(--voice-bg);
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
+          padding: 0 var(--space-6);
+          height: 120px;
+          background-image: url('/footer.png');
+          background-position: center bottom;
+          background-size: cover;
+          background-repeat: no-repeat;
+          background-color: #2a2520;
+          position: relative;
         }
 
         .voice-panel__left {
           justify-self: start;
-          max-width: 300px;
+          max-width: 350px;
           width: 100%;
+          z-index: 2;
         }
 
         .voice-panel__center {
           display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: var(--space-3);
-        }
-
-        .voice-panel__hint {
-          font-size: var(--text-xs);
-          color: var(--text-muted);
-          opacity: 0.6;
-          transition: opacity 0.3s ease;
-        }
-
-        .voice-panel__input-form {
-          display: flex;
-          gap: var(--space-2);
-          width: 100%;
-          max-width: 320px;
-        }
-
-        .voice-panel__input {
-          flex: 1;
-          padding: var(--space-2) var(--space-3);
-          border-radius: var(--radius-md);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          background: var(--voice-surface);
-          color: var(--text-inverse);
-          font-family: var(--font-body);
-          font-size: var(--text-sm);
-          outline: none;
-          transition: border-color 0.2s ease;
-        }
-
-        .voice-panel__input::placeholder {
-          color: var(--text-muted);
-          opacity: 0.6;
-        }
-
-        .voice-panel__input:focus {
-          border-color: var(--accent-primary);
-        }
-
-        .voice-panel__send {
-          padding: var(--space-2) var(--space-3);
-          border-radius: var(--radius-md);
-          border: none;
-          background: var(--accent-primary);
-          color: white;
-          cursor: pointer;
-          display: flex;
           align-items: center;
           justify-content: center;
-          transition: opacity 0.2s ease;
+          position: relative;
+          z-index: 2;
         }
 
-        .voice-panel__send:hover:not(:disabled) {
-          opacity: 0.9;
-        }
-
-        .voice-panel__send:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .voice-panel__clear {
-          padding: var(--space-2) var(--space-3);
-          border-radius: var(--radius-md);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          background: var(--voice-surface);
-          color: var(--text-muted);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-        }
-
-        .voice-panel__clear:hover {
-          border-color: var(--accent-error);
-          color: var(--accent-error);
-        }
-
-        .voice-panel__input:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
+        .voice-panel__orb-glow {
+          position: absolute;
+          width: 100px;
+          height: 100px;
+          border-radius: 50%;
+          background: radial-gradient(
+            ellipse at center,
+            rgba(99, 102, 241, 0.2) 0%,
+            rgba(99, 102, 241, 0.08) 40%,
+            transparent 70%
+          );
+          pointer-events: none;
+          z-index: 0;
         }
 
         .voice-panel__right {
           justify-self: end;
+          display: flex;
+          align-items: center;
+          gap: var(--space-3);
+          z-index: 2;
         }
 
         @media (max-width: 768px) {
           .voice-panel {
             grid-template-columns: 1fr;
             grid-template-rows: auto auto auto;
-            gap: var(--space-3);
-            padding: var(--space-3);
+            gap: var(--space-2);
+            padding: var(--space-2);
+            height: auto;
+            align-items: center;
           }
 
           .voice-panel__left,
@@ -210,8 +102,14 @@ export function VoicePanel() {
             max-width: 100%;
           }
 
-          .voice-panel__input-form {
-            max-width: 100%;
+          .voice-panel__right {
+            flex-direction: row;
+            justify-content: center;
+          }
+
+          .voice-panel__orb-glow {
+            width: 80px;
+            height: 80px;
           }
         }
       `}</style>

@@ -40,31 +40,31 @@ function GlassOrb({ state, audioLevel }: GlassOrbProps) {
     switch (state) {
       case 'idle':
         anim.targetScale = 1;
-        anim.targetIor = 1.5;
-        anim.targetThickness = 0.5;
-        anim.targetChromaticAberration = 0.02;
-        anim.rotationSpeed = 0.1;
+        anim.targetIor = 1.4;
+        anim.targetThickness = 0.4;
+        anim.targetChromaticAberration = 0.015;
+        anim.rotationSpeed = 0.08;
         break;
       case 'listening':
-        anim.targetScale = 1.1;
-        anim.targetIor = 1.8;
-        anim.targetThickness = 0.8;
-        anim.targetChromaticAberration = 0.06;
-        anim.rotationSpeed = 0.3;
+        anim.targetScale = 1.08;
+        anim.targetIor = 1.6;
+        anim.targetThickness = 0.7;
+        anim.targetChromaticAberration = 0.05;
+        anim.rotationSpeed = 0.25;
         break;
       case 'processing':
-        anim.targetScale = 1.05;
-        anim.targetIor = 2.0;
-        anim.targetThickness = 1.0;
-        anim.targetChromaticAberration = 0.1;
-        anim.rotationSpeed = 0.8;
+        anim.targetScale = 1.04;
+        anim.targetIor = 1.8;
+        anim.targetThickness = 0.9;
+        anim.targetChromaticAberration = 0.08;
+        anim.rotationSpeed = 0.6;
         break;
       case 'speaking':
-        anim.targetScale = 1.15;
-        anim.targetIor = 1.6;
-        anim.targetThickness = 0.6;
-        anim.targetChromaticAberration = 0.15;
-        anim.rotationSpeed = 0.2;
+        anim.targetScale = 1.1;
+        anim.targetIor = 1.5;
+        anim.targetThickness = 0.5;
+        anim.targetChromaticAberration = 0.1;
+        anim.rotationSpeed = 0.15;
         break;
       case 'interrupted':
         anim.targetScale = 0.95;
@@ -84,39 +84,30 @@ function GlassOrb({ state, audioLevel }: GlassOrbProps) {
 
     anim.time += delta;
 
-    // Smooth interpolation
-    anim.scale += (anim.targetScale - anim.scale) * lerpFactor;
+    // Smooth interpolation for material properties only
     anim.ior += (anim.targetIor - anim.ior) * lerpFactor;
     anim.thickness += (anim.targetThickness - anim.thickness) * lerpFactor;
     anim.chromaticAberration += (anim.targetChromaticAberration - anim.chromaticAberration) * lerpFactor;
 
-    // Add audio reactivity for speaking state
-    let audioBoost = 0;
-    if (state === 'speaking') {
-      audioBoost = audioLevel * 0.3;
-    } else if (state === 'listening') {
-      audioBoost = audioLevel * 0.15;
-    }
-
-    // Breathing animation for idle
-    let breathe = 0;
+    // Enhanced idle breathing animation - subtle but visible scale pulse
+    let breathingScale = 1;
     if (state === 'idle') {
-      breathe = Math.sin(anim.time * 1.5) * 0.03;
+      // Gentle breathing: 4 second cycle, subtle 3% scale change
+      breathingScale = 1 + Math.sin(anim.time * 0.5 * Math.PI) * 0.03;
+    } else if (state === 'speaking') {
+      // Audio-responsive + gentle pulse
+      breathingScale = 1 + audioLevel * 0.05 + Math.sin(anim.time * 2) * 0.02;
+    } else if (state === 'listening') {
+      breathingScale = 1 + Math.sin(anim.time * 1.2) * 0.025;
+    } else if (state === 'processing') {
+      breathingScale = 1 + Math.sin(anim.time * 1.8) * 0.02;
     }
 
-    // Processing wobble
-    let wobble = 0;
-    if (state === 'processing') {
-      wobble = Math.sin(anim.time * 4) * 0.02;
-    }
+    meshRef.current.scale.setScalar(breathingScale);
 
-    // Apply scale
-    const finalScale = anim.scale + audioBoost + breathe + wobble;
-    meshRef.current.scale.setScalar(finalScale);
-
-    // Rotation
+    // Gentle rotation
     meshRef.current.rotation.y += anim.rotationSpeed * delta;
-    meshRef.current.rotation.x = Math.sin(anim.time * 0.5) * 0.1;
+    meshRef.current.rotation.x = Math.sin(anim.time * 0.4) * 0.04;
   });
 
   return (
@@ -144,32 +135,60 @@ function GlassOrb({ state, audioLevel }: GlassOrbProps) {
 function GrokLogo({ state, audioLevel }: { state: VoiceState; audioLevel: number }) {
   const groupRef = useRef<THREE.Group>(null!);
   const timeRef = useRef(0);
+  const opacityRef = useRef(0.6);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
     timeRef.current += delta;
 
-    // Subtle pulse animation
+    // Gentle, subtle pulse animation
     let scale = 1;
+    let targetOpacity = 0.6;
+
     if (state === 'speaking') {
-      scale = 1 + audioLevel * 0.15 + Math.sin(timeRef.current * 6) * 0.05;
+      scale = 1 + audioLevel * 0.05 + Math.sin(timeRef.current * 2) * 0.015;
+      targetOpacity = 0.9;
     } else if (state === 'listening') {
-      scale = 1 + Math.sin(timeRef.current * 3) * 0.08;
+      scale = 1 + Math.sin(timeRef.current * 1.5) * 0.02;
+      targetOpacity = 0.85;
     } else if (state === 'processing') {
-      scale = 1 + Math.sin(timeRef.current * 5) * 0.1;
+      scale = 1 + Math.sin(timeRef.current * 2) * 0.02;
+      targetOpacity = 0.8;
+    } else if (state === 'idle') {
+      // Subtle breathing for logo in idle - synced with orb
+      scale = 1 + Math.sin(timeRef.current * 0.5 * Math.PI) * 0.015;
+      targetOpacity = 0.5; // More subtle in idle state
     } else {
-      scale = 1 + Math.sin(timeRef.current * 1.5) * 0.03;
+      scale = 0.95;
+      targetOpacity = 0.4;
     }
 
     groupRef.current.scale.setScalar(scale);
+
+    // Smooth opacity transition
+    opacityRef.current += (targetOpacity - opacityRef.current) * delta * 3;
   });
+
+  // Determine filter based on state for subtle visual feedback
+  const getFilter = () => {
+    if (state === 'idle') {
+      return 'drop-shadow(0 0 16px rgba(255,255,255,0.3)) brightness(0.9)';
+    }
+    if (state === 'speaking') {
+      return 'drop-shadow(0 0 28px rgba(99, 102, 241, 0.7))';
+    }
+    if (state === 'listening') {
+      return 'drop-shadow(0 0 24px rgba(52, 211, 153, 0.6))';
+    }
+    return 'drop-shadow(0 0 20px rgba(255,255,255,0.5))';
+  };
 
   return (
     <group ref={groupRef} position={[0, 0, -2]}>
       <Html
         center
         transform
-        distanceFactor={7}
+        distanceFactor={9}
         style={{
           pointerEvents: 'none',
         }}
@@ -181,12 +200,18 @@ function GrokLogo({ state, audioLevel }: { state: VoiceState; audioLevel: number
           height={500}
           style={{
             borderRadius: '50%',
-            filter: 'drop-shadow(0 0 24px rgba(255,255,255,0.6))',
+            filter: getFilter(),
             objectFit: 'cover',
+            opacity: state === 'idle' ? 0.7 : 1,
+            transition: 'filter 0.3s ease, opacity 0.3s ease',
           }}
         />
       </Html>
-      <pointLight position={[0, 0, 0.5]} intensity={1.5} color="#ffffff" />
+      <pointLight
+        position={[0, 0, 0.5]}
+        intensity={state === 'idle' ? 1 : 1.5}
+        color="#ffffff"
+      />
     </group>
   );
 }
@@ -207,56 +232,54 @@ function Scene({ state, audioLevel }: GlassOrbProps) {
 }
 
 export function GlassVoiceButton({ state, audioLevel = 0, onPress }: GlassVoiceButtonProps) {
+  const handleClick = () => {
+    console.log('[GlassVoiceButton] Clicked, calling onPress');
+    onPress();
+  };
+
   return (
     <div
-      onClick={onPress}
+      onClick={handleClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && onPress()}
+      onKeyDown={(e) => e.key === 'Enter' && handleClick()}
       aria-label={state === 'listening' ? 'Stop listening' : 'Start talking'}
       style={{
-        width: '120px',
-        height: '120px',
+        width: '100px',
+        height: '100px',
         cursor: 'pointer',
         position: 'relative',
         borderRadius: '50%',
         overflow: 'hidden',
       }}
     >
-      <Canvas
-        camera={{ position: [0, 0, 4], fov: 45 }}
-        style={{
-          background: 'transparent',
-          pointerEvents: 'none',
-        }}
-        gl={{
-          alpha: true,
-          antialias: true,
-          powerPreference: 'high-performance',
-        }}
-      >
-        <Suspense fallback={null}>
-          <Scene state={state} audioLevel={audioLevel} />
-        </Suspense>
-      </Canvas>
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+        <Canvas
+          camera={{ position: [0, 0, 4], fov: 45 }}
+          style={{
+            background: 'transparent',
+          }}
+          gl={{
+            alpha: true,
+            antialias: true,
+            powerPreference: 'high-performance',
+          }}
+        >
+          <Suspense fallback={null}>
+            <Scene state={state} audioLevel={audioLevel} />
+          </Suspense>
+        </Canvas>
+      </div>
 
-      {/* Hover overlay for better click feedback */}
+      {/* Clickable overlay */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           borderRadius: '50%',
-          transition: 'background 0.2s ease',
-          pointerEvents: 'none',
+          zIndex: 10,
         }}
-        className="glass-voice-button-overlay"
       />
-
-      <style>{`
-        .glass-voice-button-overlay:hover {
-          background: rgba(255, 255, 255, 0.05);
-        }
-      `}</style>
     </div>
   );
 }

@@ -1,16 +1,27 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Tldraw, Editor, createShapeId, DefaultColorStyle } from 'tldraw';
+import { Tldraw, Editor, createShapeId, DefaultColorStyle, TLComponents } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { useTutorStore } from '@/stores/tutorStore';
-import { useWebSocket } from '@/hooks/useWebSocket';
 import { debounce } from '@/lib/debounce';
-import { captureCanvasScreenshot } from '@/lib/mathTutor';
+import { captureCanvasScreenshot } from '@/lib/canvasUtils';
 import type { TldrawShapeData } from '@/types';
 
+// Hide unnecessary tldraw UI components for cleaner interface
+const tldrawComponents: TLComponents = {
+  MenuPanel: null,        // Hide left sidebar menu
+  NavigationPanel: null,  // Hide zoom/navigation controls
+  PageMenu: null,         // Hide page selector
+  ActionsMenu: null,      // Hide actions dropdown
+  DebugMenu: null,        // Hide debug menu
+  HelpMenu: null,         // Hide help menu
+  // Keep: Toolbar (bottom), StylePanel (for colors/styles)
+  // StylePanel is kept by default
+};
+
 export function TutorCanvas() {
-  const { send } = useWebSocket();
+  const send = useTutorStore((state) => state.send);
   const setEditorRef = useTutorStore((state) => state.setEditorRef);
   const setLatestCanvasScreenshot = useTutorStore((state) => state.setLatestCanvasScreenshot);
   const voiceState = useTutorStore((state) => state.voiceState);
@@ -31,7 +42,7 @@ export function TutorCanvas() {
   // Debounced canvas update sender (for WebSocket backend)
   const sendCanvasUpdate = useMemo(
     () =>
-      debounce((editor: Editor) => {
+      debounce(async (editor: Editor) => {
         if (connectionStatus !== 'connected') return;
 
         const shapes = editor.getCurrentPageShapes();
@@ -43,10 +54,14 @@ export function TutorCanvas() {
           props: shape.props as Record<string, unknown>,
         }));
 
+        // Capture fresh screenshot for this update
+        const screenshot = await captureCanvasScreenshot(editor);
+
         send({
           type: 'CANVAS_UPDATE',
           shapes: shapesJson,
           summary: `Canvas has ${shapes.length} shapes`,
+          screenshot: screenshot ?? undefined,
         });
       }, 300),
     [send, connectionStatus]
@@ -100,7 +115,10 @@ export function TutorCanvas() {
       className={`tutor-canvas ${isVoiceActive ? 'tutor-canvas--voice-active' : ''}`}
     >
       <div style={{ position: 'absolute', inset: 0 }}>
-        <Tldraw onMount={handleMount} />
+        <Tldraw
+          onMount={handleMount}
+          components={tldrawComponents}
+        />
       </div>
 
       <style jsx>{`
@@ -108,18 +126,68 @@ export function TutorCanvas() {
           position: relative;
           flex: 1;
           background: #1a1a1a;
-          border-radius: var(--radius-lg);
           overflow: hidden;
-          box-shadow: var(--shadow-md);
           display: flex;
           flex-direction: column;
           transition: box-shadow 0.5s ease;
         }
 
         .tutor-canvas--voice-active {
-          box-shadow:
-            var(--shadow-md),
-            0 0 60px rgba(99, 102, 241, 0.15);
+          box-shadow: 0 0 60px rgba(99, 102, 241, 0.1);
+        }
+      `}</style>
+
+      {/* Global styles for tldraw customization */}
+      <style jsx global>{`
+        /* Hide tldraw license watermark for cleaner demo */
+        .tl-watermark_SEE-LICENSE {
+          display: none !important;
+        }
+
+        /* Style the toolbar to match dark theme */
+        .tlui-toolbar {
+          background: rgba(28, 28, 30, 0.95) !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+          border-radius: 12px !important;
+          backdrop-filter: blur(12px);
+        }
+
+        .tlui-toolbar__inner {
+          gap: 2px;
+        }
+
+        /* Style toolbar buttons */
+        .tlui-button {
+          color: rgba(255, 255, 255, 0.8) !important;
+        }
+
+        .tlui-button:hover {
+          background: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        .tlui-button[data-state="selected"],
+        .tlui-button[aria-pressed="true"] {
+          background: rgba(99, 102, 241, 0.3) !important;
+          color: #fff !important;
+        }
+
+        /* Style panel (color/style picker) */
+        .tlui-style-panel {
+          background: rgba(28, 28, 30, 0.95) !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+          border-radius: 12px !important;
+          backdrop-filter: blur(12px);
+        }
+
+        .tlui-style-panel__wrapper {
+          background: rgba(28, 28, 30, 0.95) !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+          border-radius: 12px !important;
+        }
+
+        /* Hide the quick actions (duplicate, delete etc) floating panel */
+        .tlui-layout__top__right {
+          display: none !important;
         }
       `}</style>
     </div>

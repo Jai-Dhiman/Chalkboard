@@ -30,7 +30,7 @@ async function loadFont(): Promise<opentype.Font> {
 
   if (fontLoadPromise) return fontLoadPromise;
 
-  fontLoadPromise = opentype.load('/fonts/Roboto.ttf').then((font) => {
+  fontLoadPromise = opentype.load('/fonts/Caveat.ttf').then((font) => {
     cachedFont = font;
     return font;
   });

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { createShapeId, type Editor, type TLShapeId } from 'tldraw';
+import { createShapeId, toRichText, type Editor, type TLShapeId } from 'tldraw';
 import type {
   VoiceState,
   TutorState,
@@ -7,7 +7,12 @@ import type {
   ConnectionStatus,
   WSServerMessage,
   CanvasCommand,
+  WSClientMessage,
 } from '@/types';
+import { audioService } from '@/lib/audioService';
+import { wsManager } from '@/lib/wsManager';
+import { textToStrokesAsync, strokesToSegments } from '@/lib/handwriting';
+import { animateDrawShape } from '@/lib/strokeAnimation';
 
 interface TutorStoreState {
   // Voice State
@@ -28,9 +33,6 @@ interface TutorStoreState {
 
   // Live canvas screenshot (updated on canvas changes)
   latestCanvasScreenshot: string | null;
-
-  // Mock Mode
-  isMockMode: boolean;
 }
 
 interface TutorStoreActions {
@@ -47,6 +49,9 @@ interface TutorStoreActions {
 
   // Connection Actions
   setConnectionStatus: (status: ConnectionStatus) => void;
+  connect: () => void;
+  disconnect: () => void;
+  send: (message: WSClientMessage) => void;
 
   // Canvas Actions
   setEditorRef: (editor: Editor | null) => void;
@@ -55,9 +60,6 @@ interface TutorStoreActions {
 
   // Handle Server Messages
   handleServerMessage: (message: WSServerMessage) => void;
-
-  // Mock Mode
-  setMockMode: (enabled: boolean) => void;
 
   // Reset
   reset: () => void;
@@ -73,95 +75,202 @@ const initialState: TutorStoreState = {
   connectionStatus: 'disconnected',
   editorRef: null,
   latestCanvasScreenshot: null,
-  isMockMode: true,
 };
 
-export const useTutorStore = create<TutorStore>()((set, get) => ({
-  ...initialState,
+export const useTutorStore = create<TutorStore>()((set, get) => {
+  // Set up WebSocket handlers once
+  wsManager.setHandlers(
+    (message) => get().handleServerMessage(message),
+    (status) => set({ connectionStatus: status })
+  );
 
-  // Actions
-  setVoiceState: (voiceState) => set({ voiceState }),
-  setAudioLevel: (audioLevel) => set({ audioLevel }),
-  setTutorState: (tutorState) => set({ tutorState }),
+  return {
+    ...initialState,
 
-  addMessage: (msg) =>
-    set((state) => ({
-      messages: [
-        ...state.messages,
-        {
-          id: crypto.randomUUID(),
-          timestamp: new Date(),
-          ...msg,
-        },
-      ],
-    })),
+    // Actions
+    setVoiceState: (voiceState) => set({ voiceState }),
+    setAudioLevel: (audioLevel) => set({ audioLevel }),
+    setTutorState: (tutorState) => set({ tutorState }),
 
-  clearMessages: () => set({ messages: [] }),
-  setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
-  setEditorRef: (editorRef) => set({ editorRef }),
+    addMessage: (msg) =>
+      set((state) => ({
+        messages: [
+          ...state.messages,
+          {
+            id: crypto.randomUUID(),
+            timestamp: new Date(),
+            ...msg,
+          },
+        ],
+      })),
 
-  clearCanvas: () => {
-    const editor = get().editorRef;
-    if (editor) {
-      const shapeIds = editor.getCurrentPageShapeIds();
-      editor.deleteShapes([...shapeIds]);
-    }
-    // Clear the screenshot too since canvas is now empty
-    set({ latestCanvasScreenshot: null });
-  },
+    clearMessages: () => set({ messages: [] }),
+    setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
 
-  setLatestCanvasScreenshot: (latestCanvasScreenshot) => set({ latestCanvasScreenshot }),
+    connect: () => wsManager.connect(),
+    disconnect: () => wsManager.disconnect(),
+    send: (message) => wsManager.send(message),
 
-  handleServerMessage: (message) => {
-    const { addMessage, setVoiceState, setTutorState, editorRef } = get();
+    setEditorRef: (editorRef) => set({ editorRef }),
 
-    switch (message.type) {
-      case 'VOICE_STATE':
-        setVoiceState(message.state);
-        break;
+    clearCanvas: () => {
+      const editor = get().editorRef;
+      if (editor) {
+        const shapeIds = editor.getCurrentPageShapeIds();
+        editor.deleteShapes([...shapeIds]);
+      }
+      // Clear the screenshot too since canvas is now empty
+      set({ latestCanvasScreenshot: null });
+    },
 
-      case 'VOICE_TRANSCRIPT':
-        addMessage({ role: message.role, content: message.text });
-        break;
+    setLatestCanvasScreenshot: (latestCanvasScreenshot) => set({ latestCanvasScreenshot }),
 
-      case 'TUTOR_STATUS':
-        setTutorState({ type: message.status });
-        break;
+    handleServerMessage: (message) => {
+      const { addMessage, setVoiceState, setTutorState, editorRef } = get();
 
-      case 'CANVAS_COMMAND':
-        if (editorRef) {
-          handleCanvasCommand(editorRef, message.command);
-        }
-        break;
+      switch (message.type) {
+        case 'VOICE_STATE':
+          setVoiceState(message.state);
+          break;
 
-      case 'VOICE_AUDIO':
-        // Audio playback handled in audioService
-        break;
+        case 'VOICE_TRANSCRIPT':
+          // For student messages, find and replace the optimistic placeholder
+          if (message.role === 'student') {
+            set((state) => {
+              // Find the last optimistic student message
+              const optimisticIndex = state.messages.findLastIndex(
+                (m) => m.role === 'student' && m.isOptimistic
+              );
 
-      case 'ERROR':
-        console.error(`[WebSocket Error] ${message.code}: ${message.message}`);
-        break;
-    }
-  },
+              if (optimisticIndex >= 0) {
+                // Replace optimistic message with real content
+                const newMessages = [...state.messages];
+                newMessages[optimisticIndex] = {
+                  ...newMessages[optimisticIndex],
+                  content: message.text,
+                  isOptimistic: false,
+                };
+                return { messages: newMessages };
+              }
 
-  setMockMode: (isMockMode) => set({ isMockMode }),
+              // No optimistic message found, add normally
+              return {
+                messages: [
+                  ...state.messages,
+                  {
+                    id: crypto.randomUUID(),
+                    timestamp: new Date(),
+                    role: message.role,
+                    content: message.text,
+                  },
+                ],
+              };
+            });
+          } else {
+            // Tutor messages are added normally
+            addMessage({ role: message.role, content: message.text });
+          }
+          break;
 
-  reset: () => set(initialState),
-}));
+        case 'TUTOR_STATUS':
+          setTutorState({ type: message.status });
+          break;
 
-function handleCanvasCommand(editor: Editor, command: CanvasCommand): void {
+        case 'CANVAS_COMMAND':
+          if (editorRef) {
+            handleCanvasCommand(editorRef, message.command);
+          }
+          break;
+
+        case 'VOICE_AUDIO':
+          // Play audio through the audio service
+          audioService.playAudio(message.audio);
+          break;
+
+        case 'ERROR':
+          console.error(`[WebSocket Error] ${message.code}: ${message.message}`);
+          break;
+      }
+    },
+
+    reset: () => set(initialState),
+  };
+});
+
+async function handleCanvasCommand(editor: Editor, command: CanvasCommand): Promise<void> {
   try {
     switch (command.action) {
+      case 'ADD_ANIMATED_TEXT': {
+        const { text, x, y, color = 'white', size = 'm' } = command;
+
+        // Convert text to strokes using handwriting font
+        const result = await textToStrokesAsync(text, 2.5);
+        if (result.strokes.length === 0) {
+          // Fallback to instant text if conversion fails
+          console.warn('[Canvas] Handwriting conversion failed, falling back to instant text');
+          const shapeId = createShapeId();
+          editor.createShape({
+            id: shapeId,
+            type: 'text',
+            x,
+            y,
+            props: {
+              richText: toRichText(text),
+              color,
+              size,
+              font: 'draw',
+              autoSize: true,
+            },
+          });
+          return;
+        }
+
+        // Convert to tldraw segment format
+        const segments = strokesToSegments(result.strokes);
+
+        // Create draw shape with empty segments
+        const shapeId = createShapeId();
+        editor.createShape({
+          id: shapeId,
+          type: 'draw',
+          x,
+          y,
+          props: {
+            segments: [],
+            color,
+            size,
+            isComplete: false,
+          },
+        });
+
+        // Animate the shape
+        console.log('[Canvas] Starting handwriting animation for:', text);
+        await animateDrawShape(editor, shapeId, segments, { color, size });
+        console.log('[Canvas] Handwriting animation complete');
+        break;
+      }
+
       case 'ADD_SHAPE': {
         // Generate a proper tldraw shape ID
         const shapeId = createShapeId();
+
+        // For text shapes, convert text prop to richText format
+        let props = command.shape.props;
+        if (command.shape.type === 'text' && props.text) {
+          const { text, ...restProps } = props as { text: string; [key: string]: unknown };
+          props = {
+            ...restProps,
+            richText: toRichText(text),
+            autoSize: true,
+          };
+        }
 
         editor.createShape({
           id: shapeId,
           type: command.shape.type,
           x: command.shape.x,
           y: command.shape.y,
-          props: command.shape.props,
+          props,
         });
         console.log('[Canvas] Created shape:', shapeId, command.shape.type);
         break;

@@ -1,12 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header/Header';
 import { TutorCanvas } from './components/TutorCanvas/TutorCanvas';
 import { VoicePanel } from './components/VoicePanel/VoicePanel';
 import { LandingPage } from './components/LandingPage/LandingPage';
+import { useTutorStore } from './stores/tutorStore';
 import './styles/globals.css';
 
 export default function App() {
   const [showLanding, setShowLanding] = useState(true);
+  const hasConnected = useRef(false);
+
+  // Connect to WebSocket when app loads (after landing page)
+  useEffect(() => {
+    if (!showLanding && !hasConnected.current) {
+      hasConnected.current = true;
+      useTutorStore.getState().connect();
+    }
+
+    // Only disconnect on actual unmount, not on re-renders
+    return () => {
+      // Don't disconnect during hot reload
+    };
+  }, [showLanding]);
 
   if (showLanding) {
     return <LandingPage onStart={() => setShowLanding(false)} />;
@@ -42,8 +57,6 @@ export default function App() {
 
         .tutor-main {
           flex: 1;
-          padding: var(--space-4);
-          padding-bottom: 0;
           min-height: 0;
           display: flex;
           flex-direction: column;
@@ -62,8 +75,7 @@ export default function App() {
 
         @media (max-width: 768px) {
           .tutor-main {
-            padding: var(--space-3);
-            padding-bottom: 0;
+            /* No padding needed */
           }
         }
       `}</style>

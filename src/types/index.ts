@@ -13,6 +13,7 @@ export interface Message {
   role: 'student' | 'tutor';
   content: string;
   timestamp: Date;
+  isOptimistic?: boolean;
 }
 
 // Connection Status
@@ -24,7 +25,7 @@ export type WSClientMessage =
   | { type: 'VOICE_AUDIO'; audio: string }
   | { type: 'VOICE_END' }
   | { type: 'TEXT_MESSAGE'; text: string }
-  | { type: 'CANVAS_UPDATE'; shapes: TldrawShapeData[]; summary: string }
+  | { type: 'CANVAS_UPDATE'; shapes: TldrawShapeData[]; summary: string; screenshot?: string }
   | { type: 'CANVAS_CHANGE'; added: TldrawShapeData[]; modified: TldrawShapeData[]; deleted: string[] };
 
 // WebSocket Message Types - Backend to Frontend
@@ -39,6 +40,7 @@ export type WSServerMessage =
 // Canvas Command Types
 export type CanvasCommand =
   | { action: 'ADD_SHAPE'; shape: TldrawShapeData }
+  | { action: 'ADD_ANIMATED_TEXT'; text: string; x: number; y: number; color?: string; size?: string }
   | { action: 'UPDATE_SHAPE'; shapeId: string; updates: Partial<TldrawShapeData> }
   | { action: 'DELETE_SHAPE'; shapeId: string }
   | { action: 'HIGHLIGHT'; shapeIds: string[] }

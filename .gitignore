@@ -8,3 +8,6 @@ CLAUDE.md
 .claude/
 
 .env
+xai-voice-examples-main/
+
+__pycache__/

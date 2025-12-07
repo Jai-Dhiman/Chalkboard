@@ -35,21 +35,25 @@ export function TutorStatus({ state }: { state: TutorState }) {
           display: flex;
           align-items: center;
           gap: var(--space-2);
-          padding: var(--space-2) var(--space-3);
+          padding: var(--space-2) var(--space-4);
           border-radius: var(--radius-full);
-          background: var(--voice-surface);
+          background: rgba(0, 0, 0, 0.5);
+          backdrop-filter: blur(8px);
           font-size: var(--text-sm);
-          color: var(--text-muted);
+          font-weight: 500;
+          color: rgba(255, 255, 255, 0.8);
           white-space: nowrap;
+          text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
         }
 
         .tutor-status__indicator {
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          background: var(--text-muted);
+          background: rgba(255, 255, 255, 0.5);
           transition: background 0.3s ease;
           flex-shrink: 0;
+          box-shadow: 0 0 6px currentColor;
         }
 
         .tutor-status--listening .tutor-status__indicator {
