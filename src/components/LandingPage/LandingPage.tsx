@@ -9,9 +9,8 @@ export function LandingPage({ onStart }: LandingPageProps) {
     <div className="landing-page">
       <main className="landing-content">
         <h1 className="headline">Chalkboard</h1>
-        <p className="tagline">
-          Your AI math tutor that sees what you write,
-          hears what you say, and guides you to understanding.
+        <p className="subheader">
+          Speak your thoughts. Draw your work. Get unstuck.
         </p>
         <button className="cta-button" onClick={onStart}>
           Start Learning
