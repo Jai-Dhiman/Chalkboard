@@ -1,17 +1,25 @@
+import { useState } from 'react';
 import { Header } from './components/Header/Header';
 import { TutorCanvas } from './components/TutorCanvas/TutorCanvas';
 import { VoicePanel } from './components/VoicePanel/VoicePanel';
+import { LandingPage } from './components/LandingPage/LandingPage';
 import './styles/globals.css';
 
 export default function App() {
+  const [showLanding, setShowLanding] = useState(true);
+
+  if (showLanding) {
+    return <LandingPage onStart={() => setShowLanding(false)} />;
+  }
+
   return (
     <div className="tutor-app">
       <Header />
-      
+
       <main className="tutor-main">
         <TutorCanvas />
       </main>
-      
+
       <VoicePanel />
       
       <style jsx>{`
@@ -20,7 +28,7 @@ export default function App() {
           flex-direction: column;
           height: 100vh;
           height: 100dvh;
-          background: var(--canvas-bg);
+          background: #1a1a1a;
           overflow: hidden;
         }
 

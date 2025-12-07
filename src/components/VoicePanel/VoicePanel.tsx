@@ -1,16 +1,16 @@
 'use client';
 
 import { useState, useCallback, FormEvent } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Loader2 } from 'lucide-react';
 import { useVoice } from '@/hooks/useVoice';
-import { useWebSocket } from '@/hooks/useWebSocket';
-import { VoiceOrb } from '../VoiceOrb/VoiceOrb';
+import { useMathTutor } from '@/hooks/useMathTutor';
+import { GlassVoiceButton } from '../GlassVoiceButton';
 import { TranscriptFeed } from '../TranscriptFeed/TranscriptFeed';
 import { TutorStatus } from '../TutorStatus/TutorStatus';
 
 export function VoicePanel() {
   const [textInput, setTextInput] = useState('');
-  const { send } = useWebSocket();
+  const { submitRequest, isProcessing, isConfigured } = useMathTutor();
 
   const {
     voiceState,
@@ -21,14 +21,20 @@ export function VoicePanel() {
   } = useVoice();
 
   const handleSubmit = useCallback(
-    (e: FormEvent) => {
+    async (e: FormEvent) => {
       e.preventDefault();
-      if (!textInput.trim()) return;
+      if (!textInput.trim() || isProcessing) return;
 
-      send({ type: 'TEXT_MESSAGE', text: textInput.trim() });
+      const request = textInput.trim();
       setTextInput('');
+
+      try {
+        await submitRequest(request);
+      } catch {
+        // Error already handled in hook
+      }
     },
-    [textInput, send]
+    [textInput, isProcessing, submitRequest]
   );
 
   return (
@@ -38,7 +44,7 @@ export function VoicePanel() {
       </div>
 
       <div className="voice-panel__center">
-        <VoiceOrb
+        <GlassVoiceButton
           state={voiceState}
           audioLevel={audioLevel}
           onPress={toggleVoice}
@@ -52,11 +58,17 @@ export function VoicePanel() {
             type="text"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
-            placeholder="Type: quadratic, circle, derivative..."
+            placeholder={isConfigured ? "Try: Create 4 quadratic equations" : "Set VITE_GROK_API_KEY in .env"}
             className="voice-panel__input"
+            disabled={isProcessing || !isConfigured}
           />
-          <button type="submit" className="voice-panel__send" aria-label="Send">
-            <Send className="w-4 h-4" />
+          <button
+            type="submit"
+            className="voice-panel__send"
+            aria-label="Send"
+            disabled={isProcessing || !isConfigured}
+          >
+            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>
         </form>
       </div>
@@ -138,8 +150,18 @@ export function VoicePanel() {
           transition: opacity 0.2s ease;
         }
 
-        .voice-panel__send:hover {
+        .voice-panel__send:hover:not(:disabled) {
           opacity: 0.9;
+        }
+
+        .voice-panel__send:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .voice-panel__input:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .voice-panel__right {

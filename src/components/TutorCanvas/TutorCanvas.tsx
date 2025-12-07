@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Tldraw, Editor, createShapeId } from 'tldraw';
+import { Tldraw, Editor, createShapeId, DefaultColorStyle } from 'tldraw';
 import 'tldraw/tldraw.css';
 import { useTutorStore } from '@/stores/tutorStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -44,6 +44,12 @@ export function TutorCanvas() {
       editorRef.current = editor;
       setEditorRef(editor);
 
+      // Set default color to white for chalkboard aesthetic
+      editor.setStyleForNextShapes(DefaultColorStyle, 'white');
+
+      // Force dark mode by setting user preferences
+      editor.user.updateUserPreferences({ colorScheme: 'dark' });
+
       // Listen to store changes from user actions
       editor.store.listen(
         (entry) => {
@@ -71,13 +77,15 @@ export function TutorCanvas() {
     <div
       className={`tutor-canvas ${isVoiceActive ? 'tutor-canvas--voice-active' : ''}`}
     >
-      <Tldraw onMount={handleMount} inferDarkMode={false} />
+      <div style={{ position: 'absolute', inset: 0 }}>
+        <Tldraw onMount={handleMount} />
+      </div>
 
       <style jsx>{`
         .tutor-canvas {
           position: relative;
           flex: 1;
-          background: var(--canvas-bg);
+          background: #1a1a1a;
           border-radius: var(--radius-lg);
           overflow: hidden;
           box-shadow: var(--shadow-md);
@@ -90,14 +98,6 @@ export function TutorCanvas() {
           box-shadow:
             var(--shadow-md),
             0 0 60px rgba(99, 102, 241, 0.15);
-        }
-
-        .tutor-canvas :global(.tl-background) {
-          background-color: var(--canvas-bg) !important;
-        }
-
-        .tutor-canvas :global(.tl-container) {
-          height: 100%;
         }
       `}</style>
     </div>

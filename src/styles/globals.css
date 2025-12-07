@@ -1,46 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Custom Font */
+@font-face {
+  font-family: 'Rockybilly';
+  src: url('/rockybilly/Rockybilly.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 :root {
-  /* Canvas — where learning happens */
-  --canvas-bg: #FDFCFA;
-  --canvas-grid: #F0EDE8;
-  
-  /* Voice Panel — where Grok lives */
+  /* Chalkboard aesthetic - dark canvas */
+  --canvas-bg: #1a1a1a;
+  --canvas-grid: #2a2a2a;
   --voice-bg: #1C1C1E;
   --voice-surface: #2C2C2E;
   --voice-glow: rgba(99, 102, 241, 0.4);
-  
-  /* Accents */
   --accent-primary: #6366F1;
   --accent-success: #34D399;
   --accent-warning: #FBBF24;
   --accent-error: #F87171;
-  
-  /* Text */
   --text-primary: #1F2937;
   --text-secondary: #6B7280;
   --text-inverse: #F9FAFB;
   --text-muted: #9CA3AF;
-  
-  /* Math-specific */
-  --math-ink: #1E3A5F;
-  --math-annotation: #6366F1;
-  --math-student: #374151;
-  
-  /* Shadows & Depth */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
   --shadow-glow: 0 0 40px var(--voice-glow);
-  
-  /* Typography */
-  --font-display: 'Fraunces', Georgia, serif;
-  --font-body: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+  /* Typography - Rockybilly for titles, system fonts for body */
+  --font-display: 'Rockybilly', cursive;
+  --font-body: system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, monospace;
   
   /* Spacing */
   --space-1: 0.25rem;
@@ -98,3 +91,4 @@ h1, h2, h3, h4, h5, h6 {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }
+
