@@ -1,0 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Canvas — where learning happens */
+  --canvas-bg: #FDFCFA;
+  --canvas-grid: #F0EDE8;
+  
+  /* Voice Panel — where Grok lives */
+  --voice-bg: #1C1C1E;
+  --voice-surface: #2C2C2E;
+  --voice-glow: rgba(99, 102, 241, 0.4);
+  
+  /* Accents */
+  --accent-primary: #6366F1;
+  --accent-success: #34D399;
+  --accent-warning: #FBBF24;
+  --accent-error: #F87171;
+  
+  /* Text */
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --text-inverse: #F9FAFB;
+  --text-muted: #9CA3AF;
+  
+  /* Math-specific */
+  --math-ink: #1E3A5F;
+  --math-annotation: #6366F1;
+  --math-student: #374151;
+  
+  /* Shadows & Depth */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 40px var(--voice-glow);
+  
+  /* Typography */
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+  --space-10: 4rem;
+  
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--canvas-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
